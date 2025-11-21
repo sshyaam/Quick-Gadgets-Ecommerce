@@ -115,7 +115,8 @@ export async function updateStock(request, env) {
   const stock = await fulfillmentService.updateProductStock(
     productId,
     value.quantity,
-    env.fulfillment_db
+    env.fulfillment_db,
+    env.SHIPPING_CACHE // Pass KV cache for invalidation
   );
   
   return new Response(
@@ -154,7 +155,8 @@ export async function reduceStock(request, env, ctx = null) {
     await fulfillmentService.reduceProductStock(
       productId,
       value.quantity,
-      env.fulfillment_db
+      env.fulfillment_db,
+      env.SHIPPING_CACHE // Pass KV cache for invalidation
     );
     
     // Log successful stock reduction
@@ -296,7 +298,8 @@ export async function calculateBatchShipping(request, env) {
   
   const result = await fulfillmentService.calculateBatchShipping(
     value,
-    env.fulfillment_db
+    env.fulfillment_db,
+    env.SHIPPING_CACHE // Pass KV cache binding
   );
   
   return new Response(
@@ -324,7 +327,8 @@ export async function reserveStock(request, env) {
   await fulfillmentService.reserveProductStock(
     productId,
     value.quantity,
-    env.fulfillment_db
+    env.fulfillment_db,
+    env.SHIPPING_CACHE // Pass KV cache for invalidation
   );
   
   return new Response(
@@ -352,7 +356,8 @@ export async function releaseStock(request, env) {
   await fulfillmentService.releaseProductStock(
     productId,
     value.quantity,
-    env.fulfillment_db
+    env.fulfillment_db,
+    env.SHIPPING_CACHE // Pass KV cache for invalidation
   );
   
   return new Response(

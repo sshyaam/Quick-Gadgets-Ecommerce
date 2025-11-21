@@ -5,6 +5,7 @@
 
 import { authenticateAdmin } from '../../shared/utils/adminAuth.js';
 import * as inventoryModel from '../models/inventoryModel.js';
+import { invalidateShippingCache } from '../services/fulfillmentService.js';
 import { ValidationError } from '../../shared/utils/errors.js';
 
 /**
@@ -60,6 +61,11 @@ export async function updateStock(request, env) {
   
   // Get updated stock
   const updatedStock = await inventoryModel.getStock(env.fulfillment_db, productId, warehouseId);
+  
+  // Invalidate shipping cache - stock change affects shipping availability
+  if (env.SHIPPING_CACHE) {
+    await invalidateShippingCache(env.SHIPPING_CACHE, productId);
+  }
   
   return new Response(
     JSON.stringify({

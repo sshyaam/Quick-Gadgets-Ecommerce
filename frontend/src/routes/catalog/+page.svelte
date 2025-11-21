@@ -79,7 +79,26 @@
 	});
 	
 	async function savePincode() {
-		if (!pincode || pincode.length !== 6) {
+		// Handle clearing: if pincode is empty, clear from localStorage
+		if (!pincode || pincode.trim() === '') {
+			// Clear from localStorage
+			if (typeof window !== 'undefined') {
+				localStorage.removeItem('shippingPincode');
+				localStorage.removeItem('shippingCity');
+				localStorage.removeItem('shippingState');
+			}
+			
+			// Clear shipping options
+			shippingOptions = {};
+			lastProductIds = '';
+			
+			successMessage = 'Delivery estimates cleared!';
+			setTimeout(() => successMessage = '', 3000);
+			return;
+		}
+		
+		// Validate pincode format
+		if (pincode.length !== 6 || !/^\d{6}$/.test(pincode)) {
 			errorMessage = 'Please enter a valid 6-digit pincode';
 			setTimeout(() => errorMessage = '', 5000);
 			return;
@@ -88,28 +107,59 @@
 		// Save to localStorage
 		if (typeof window !== 'undefined') {
 			localStorage.setItem('shippingPincode', pincode);
-			if (city) localStorage.setItem('shippingCity', city);
-			if (state) localStorage.setItem('shippingState', state);
+			if (city) {
+				localStorage.setItem('shippingCity', city);
+			} else {
+				localStorage.removeItem('shippingCity');
+			}
+			if (state) {
+				localStorage.setItem('shippingState', state);
+			} else {
+				localStorage.removeItem('shippingState');
+			}
 		}
 		
-		// Load shipping options for all products
-		await loadShippingOptionsForProducts();
+		// Clear existing shipping options to force reload with new pincode
+		shippingOptions = {};
+		lastProductIds = ''; // Reset to allow reload
+		
+		// Load shipping options for all products using batch API
+		// Pass forceReload=true to ensure all products are included
+		await loadShippingOptionsForProducts(true);
 		successMessage = 'Delivery estimates updated!';
 		setTimeout(() => successMessage = '', 3000);
 	}
 	
-	async function loadShippingOptionsForProducts() {
-		if (!pincode || products.length === 0 || isLoadingShipping) return;
+	async function loadShippingOptionsForProducts(forceReload = false) {
+		if (!pincode || products.length === 0 || isLoadingShipping) {
+			console.log('[Shipping] Early return:', { 
+				hasPincode: !!pincode, 
+				productsCount: products.length, 
+				isLoadingShipping 
+			});
+			return;
+		}
 		
 		isLoadingShipping = true;
 		
 		try {
 			// Collect all products that need shipping options
+			// If forceReload is true, include all products regardless of existing options
 			const productsToLoad = products.filter(
-				p => p.category && !shippingOptions[p.productId] && !loadingShipping.has(p.productId)
+				p => p.category && 
+				     (forceReload || !shippingOptions[p.productId]) && 
+				     !loadingShipping.has(p.productId)
 			);
 			
+			console.log('[Shipping] Products to load:', {
+				totalProducts: products.length,
+				productsToLoad: productsToLoad.length,
+				forceReload,
+				productIds: productsToLoad.map(p => p.productId)
+			});
+			
 			if (productsToLoad.length === 0) {
+				console.log('[Shipping] No products to load, returning early');
 				isLoadingShipping = false;
 				return;
 			}
@@ -117,43 +167,64 @@
 			// Mark all as loading
 			productsToLoad.forEach(p => loadingShipping.add(p.productId));
 			
-			// Load all shipping options in parallel (but batched)
-			const promises = productsToLoad.map(async (product) => {
-				try {
-					const options = await fulfillmentApi.getShippingOptions(
-						product.productId,
-						product.category,
-						pincode,
-						city,
-						state
-					);
-					return { productId: product.productId, options, error: null };
-				} catch (error) {
-					return { 
-						productId: product.productId, 
-						options: null, 
-						error: { error: true, message: 'Failed to load shipping options' }
+			// OPTIMIZATION: Use batch API instead of individual calls
+			// Transform products to batch format
+			const items = productsToLoad.map(product => ({
+				productId: product.productId,
+				category: product.category,
+				quantity: 1 // Default quantity for catalog display
+			}));
+			
+			console.log('[Shipping] Calling batch API with:', {
+				itemsCount: items.length,
+				items: items,
+				address: { pincode, city, state }
+			});
+			
+			// Single batch API call instead of N individual calls
+			try {
+				const batchResults = await fulfillmentApi.calculateBatchShipping(
+					items,
+					{ pincode, city, state }
+				);
+				
+				console.log('[Shipping] Batch API response:', batchResults);
+				
+				// Map batch results to shippingOptions structure
+				// Batch returns: { productId: { standard: {...}, express: {...} } }
+				const newShippingOptions = { ...shippingOptions };
+				
+				productsToLoad.forEach(product => {
+					const productId = product.productId;
+					if (batchResults[productId]) {
+						// Batch endpoint returns { standard: {...}, express: {...} }
+						// This matches the expected structure
+						newShippingOptions[productId] = batchResults[productId];
+					} else {
+						// Product not in batch results (shouldn't happen, but handle gracefully)
+						newShippingOptions[productId] = {
+							error: true,
+							message: 'Shipping options not available'
+						};
+					}
+					loadingShipping.delete(productId);
+				});
+				
+				// Single update to prevent reactive loop
+				shippingOptions = newShippingOptions;
+			} catch (error) {
+				// If batch call fails, mark all products as error
+				console.error('Batch shipping options failed:', error);
+				const newShippingOptions = { ...shippingOptions };
+				productsToLoad.forEach(product => {
+					newShippingOptions[product.productId] = {
+						error: true,
+						message: 'Failed to load shipping options'
 					};
-				} finally {
 					loadingShipping.delete(product.productId);
-				}
-			});
-			
-			// Wait for all requests to complete
-			const results = await Promise.all(promises);
-			
-			// Batch update shipping options once (prevents multiple reactive triggers)
-			const newShippingOptions = { ...shippingOptions };
-			results.forEach(({ productId, options, error }) => {
-				if (error) {
-					newShippingOptions[productId] = error;
-				} else if (options) {
-					newShippingOptions[productId] = options;
-				}
-			});
-			
-			// Single update to prevent reactive loop
-			shippingOptions = newShippingOptions;
+				});
+				shippingOptions = newShippingOptions;
+			}
 		} finally {
 			isLoadingShipping = false;
 		}

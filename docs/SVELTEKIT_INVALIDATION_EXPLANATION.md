@@ -27,13 +27,17 @@ x-svelte-invalidated: page=1,layout=1
 
 ### What Does `page=1` Mean?
 
+**CORRECTION**: The number corresponds to the **actual page number from the URL query parameter**, not just an internal ID!
+
 - `page` = The route/page that was invalidated
-- `1` = The dependency ID (SvelteKit's internal tracking)
+- `1` = The value from URL query parameter `?page=1`
 
 **Example**: `x-svelte-invalidated: page=1` means:
-- The data for the current page route has been invalidated
+- The data for page 1 of this route has been invalidated
+- When you navigate to `?page=2`, you'll see `x-svelte-invalidated: page=2`
+- SvelteKit tracks which specific page data needs refreshing
 - SvelteKit needs to re-run the `load` function in `+page.server.js` or `+page.js`
-- Fresh data should be fetched
+- Fresh data should be fetched for that specific page
 
 ### Multiple Dependencies
 

@@ -39,7 +39,7 @@ export const calculateBatchShippingSchema = Joi.object({
       'string.pattern.base': 'Pincode must be a valid 6-digit Indian pincode'
     }),
     city: Joi.string().allow('').optional(),
-    state: Joi.string().min(1).required(),
+    state: Joi.string().allow('').optional(),
   }).required(),
 });
 

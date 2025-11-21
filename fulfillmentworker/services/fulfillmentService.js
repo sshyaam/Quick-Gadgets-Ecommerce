@@ -93,7 +93,7 @@ export async function getProductStocks(productIds, db) {
  * @param {D1Database} db - Database instance
  * @returns {Promise<Object>} Updated stock data
  */
-export async function updateProductStock(productId, quantity, db) {
+export async function updateProductStock(productId, quantity, db, cache = null) {
   if (quantity < 0) {
     throw new Error('Stock quantity cannot be negative');
   }
@@ -101,12 +101,22 @@ export async function updateProductStock(productId, quantity, db) {
   const existing = await getStock(db, productId);
   if (!existing) {
     // Create new stock entry
-    return await setStock(db, productId, quantity);
+    const result = await setStock(db, productId, quantity);
+    // Invalidate shipping cache - stock added to warehouse affects shipping options
+    if (cache) {
+      await invalidateShippingCache(cache, productId);
+    }
+    return result;
   }
   
   const updated = await updateStock(db, productId, quantity);
   if (!updated) {
     throw new Error('Failed to update stock');
+  }
+  
+  // Invalidate shipping cache - stock change affects shipping availability
+  if (cache) {
+    await invalidateShippingCache(cache, productId);
   }
   
   return {
@@ -125,7 +135,7 @@ export async function updateProductStock(productId, quantity, db) {
  * @param {D1Database} db - Database instance
  * @returns {Promise<boolean>} True if reduced successfully
  */
-export async function reduceProductStock(productId, quantity, db) {
+export async function reduceProductStock(productId, quantity, db, cache = null) {
   // Get current stock info
   const stock = await getStock(db, productId);
   if (!stock) {
@@ -152,6 +162,11 @@ export async function reduceProductStock(productId, quantity, db) {
       const currentStock = await getStock(db, productId);
       const currentAvailable = currentStock ? currentStock.quantity - currentStock.reserved_quantity : 0;
       throw new ConflictError(`Failed to reduce stock. Current available: ${currentAvailable}, Requested: ${quantity}. Stock may have been reduced by another order.`);
+    }
+    
+    // Invalidate shipping cache - stock reduction affects shipping availability
+    if (cache) {
+      await invalidateShippingCache(cache, productId);
     }
   } catch (error) {
     // Convert regular errors to ConflictError to preserve error messages
@@ -185,7 +200,7 @@ export async function reduceProductStock(productId, quantity, db) {
  * @param {D1Database} db - Database instance
  * @returns {Promise<boolean>} True if reserved successfully
  */
-export async function reserveProductStock(productId, quantity, db) {
+export async function reserveProductStock(productId, quantity, db, cache = null) {
   const available = await getAvailableStock(db, productId);
   
   if (available < quantity) {
@@ -195,6 +210,11 @@ export async function reserveProductStock(productId, quantity, db) {
   const reserved = await reserveStock(db, productId, quantity);
   if (!reserved) {
     throw new ConflictError('Failed to reserve stock. Insufficient quantity available.');
+  }
+  
+  // Invalidate shipping cache - reserved stock affects available stock for shipping
+  if (cache) {
+    await invalidateShippingCache(cache, productId);
   }
   
   return true;
@@ -207,8 +227,15 @@ export async function reserveProductStock(productId, quantity, db) {
  * @param {D1Database} db - Database instance
  * @returns {Promise<boolean>} True if released successfully
  */
-export async function releaseProductStock(productId, quantity, db) {
-  return await releaseReservedStock(db, productId, quantity);
+export async function releaseProductStock(productId, quantity, db, cache = null) {
+  const released = await releaseReservedStock(db, productId, quantity);
+  
+  // Invalidate shipping cache - releasing reserved stock affects available stock for shipping
+  if (cache) {
+    await invalidateShippingCache(cache, productId);
+  }
+  
+  return released;
 }
 
 /**
@@ -219,34 +246,111 @@ export async function releaseProductStock(productId, quantity, db) {
  * @param {Object} userAddress - User address with pincode, city, state
  * @returns {Promise<Object>} Shipping options with warehouse info
  */
-export async function getShippingOptions(productId, category, db, userAddress = null, requiredQuantity = 1, cache = null) {
-  // Generate cache key
-  const cacheKey = userAddress && userAddress.pincode 
-    ? `shipping:${productId}:${category}:${userAddress.pincode}:${requiredQuantity}`
-    : null;
+/**
+ * Generate cache key for shipping options
+ * Format: shipping:{productId}:{pincode}
+ * Note: City and state are included in pincode coverage, so pincode alone is sufficient
+ * @param {string} productId - Product ID
+ * @param {Object} userAddress - Address with pincode
+ * @returns {string|null} Cache key or null if no pincode
+ */
+function getShippingCacheKey(productId, userAddress) {
+  if (!userAddress || !userAddress.pincode) return null;
   
-  // Try to get from cache (5 minute TTL)
-  if (cache && cacheKey) {
-    try {
-      const cached = await cache.get(cacheKey, { type: 'json' });
-      if (cached) {
-        return cached;
-      }
-    } catch (error) {
-      // Cache miss or error - continue to DB query
+  // Simple cache key: shipping:{productId}:{pincode}
+  // Pincode alone is sufficient as it determines warehouse and zone
+  return `shipping:${productId}:${userAddress.pincode}`;
+}
+
+/**
+ * Get shipping options from cache
+ * @param {KVNamespace} cache - KV cache binding
+ * @param {string} cacheKey - Cache key
+ * @returns {Promise<Object|null>} Cached data or null
+ */
+async function getShippingFromCache(cache, cacheKey) {
+  if (!cache || !cacheKey) return null;
+  
+  try {
+    const cached = await cache.get(cacheKey, { type: 'json' });
+    if (cached) {
+      console.log(`[Shipping Cache] Cache hit for key: ${cacheKey}`);
+      return cached;
+    }
+  } catch (error) {
+    console.error(`[Shipping Cache] Error reading cache for ${cacheKey}:`, error.message);
+  }
+  
+  return null;
+}
+
+/**
+ * Store shipping options in cache
+ * @param {KVNamespace} cache - KV cache binding
+ * @param {string} cacheKey - Cache key
+ * @param {Object} data - Data to cache
+ * @param {number} ttl - Time to live in seconds (default: 120 = 2 minutes)
+ */
+async function setShippingCache(cache, cacheKey, data, ttl = 120) {
+  if (!cache || !cacheKey) return;
+  
+  try {
+    await cache.put(cacheKey, JSON.stringify(data), { expirationTtl: ttl });
+    console.log(`[Shipping Cache] Cached data for key: ${cacheKey} (TTL: ${ttl}s)`);
+  } catch (error) {
+    console.error(`[Shipping Cache] Error storing cache for ${cacheKey}:`, error.message);
+    // Cache write error - non-fatal, continue
+  }
+}
+
+/**
+ * Invalidate all shipping cache entries for a product
+ * This is called when stock changes (added, updated, reduced, reserved, released)
+ * because shipping options depend on warehouse stock availability
+ * @param {KVNamespace} cache - KV cache binding
+ * @param {string} productId - Product ID
+ */
+export async function invalidateShippingCache(cache, productId) {
+  if (!cache || !productId) return;
+  
+  try {
+    // List all keys with prefix shipping:{productId}:
+    const prefix = `shipping:${productId}:`;
+    const keys = await cache.list({ prefix });
+    
+    if (keys.keys && keys.keys.length > 0) {
+      // Delete all matching keys
+      const deletePromises = keys.keys.map(key => cache.delete(key.name));
+      await Promise.all(deletePromises);
+      console.log(`[Shipping Cache] Invalidated ${keys.keys.length} cache entries for product ${productId}`);
+    } else {
+      console.log(`[Shipping Cache] No cache entries found to invalidate for product ${productId}`);
+    }
+  } catch (error) {
+    console.error(`[Shipping Cache] Error invalidating cache for product ${productId}:`, error.message);
+    // Cache invalidation error - non-fatal, continue
+  }
+}
+
+export async function getShippingOptions(productId, category, db, userAddress = null, requiredQuantity = 1, cache = null) {
+  // Generate cache key based on productId and pincode
+  const cacheKey = getShippingCacheKey(productId, userAddress);
+  
+  // Try to get from cache first (2 minute TTL)
+  if (cacheKey) {
+    const cached = await getShippingFromCache(cache, cacheKey);
+    if (cached) {
+      return cached;
     }
   }
   
+  // Cache miss - calculate shipping options
   const { getShippingOptionsForProduct } = await import('../models/shippingModel.js');
   const options = await getShippingOptionsForProduct(db, productId, category, userAddress, requiredQuantity);
   
-  // Cache the result (5 minute TTL)
-  if (cache && cacheKey) {
-    try {
-      await cache.put(cacheKey, JSON.stringify(options), { expirationTtl: 300 }); // 5 minutes
-    } catch (error) {
-      // Cache write error - non-fatal, continue
-    }
+  // Cache the result (2 minute TTL - short TTL as requested)
+  if (cacheKey) {
+    await setShippingCache(cache, cacheKey, options, 120); // 2 minutes
   }
   
   return options;
@@ -268,40 +372,72 @@ export async function calculateShipping(params, db) {
  * @param {Array} params.items - Array of {productId, category, quantity}
  * @param {Object} params.address - Shipping address
  * @param {D1Database} db - Database instance
+ * @param {KVNamespace} cache - KV cache binding (optional)
  * @returns {Promise<Object>} Shipping options for all products (both standard and express)
  */
-export async function calculateBatchShipping(params, db) {
+export async function calculateBatchShipping(params, db, cache = null) {
   const { items, address } = params;
   
   const results = {};
   
   // Calculate shipping for each product (both standard and express)
   const calculationPromises = items.map(async (item) => {
-    const productResults = {
-      standard: { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false },
-      express: { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false }
-    };
+    // Generate cache key for this product
+    const cacheKey = getShippingCacheKey(item.productId, address);
     
-    // Calculate both standard and express shipping
-    for (const mode of ['standard', 'express']) {
+    // Try to get from cache first
+    let cachedOptions = null;
+    if (cacheKey) {
+      cachedOptions = await getShippingFromCache(cache, cacheKey);
+    }
+    
+    let productResults;
+    
+    if (cachedOptions) {
+      // Cache hit - use cached data
+      console.log(`[Batch Shipping] Cache hit for product ${item.productId}`);
+      
+      // Cached data has format: { standard: {...}, express: {...}, ... }
+      // We need to extract just standard and express for batch response
+      productResults = {
+        standard: cachedOptions.standard || { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false },
+        express: cachedOptions.express || { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false }
+      };
+    } else {
+      // Cache miss - calculate shipping options
+      // OPTIMIZATION: Use getShippingOptionsForProduct which returns both standard and express in one call
+      // This is more efficient and ensures cache format matches single product endpoint
+      console.log(`[Batch Shipping] Cache miss for product ${item.productId}, calculating...`);
+      
+      const { getShippingOptionsForProduct } = await import('../models/shippingModel.js');
+      
       try {
-        const result = await calculateShippingCost(db, {
-          category: item.category,
-          shippingMode: mode,
-          quantity: item.quantity,
-          address: address,
-          productId: item.productId
-        });
+        // Get full shipping options (includes both standard and express)
+        const fullOptions = await getShippingOptionsForProduct(
+          db,
+          item.productId,
+          item.category,
+          address,
+          item.quantity || 1
+        );
         
-        productResults[mode] = {
-          cost: Math.round(result.cost * 100) / 100,
-          estimatedDays: result.estimatedDays || null,
-          estimatedDaysRange: result.estimatedDaysRange || null,
-          available: result.cost > 0
+        // Cache the full options (2 minute TTL - short TTL as requested)
+        if (cacheKey) {
+          await setShippingCache(cache, cacheKey, fullOptions, 120); // 2 minutes
+        }
+        
+        // Extract standard and express for batch response
+        productResults = {
+          standard: fullOptions.standard || { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false },
+          express: fullOptions.express || { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false }
         };
       } catch (error) {
-        console.error(`[fulfillmentService] Error calculating ${mode} shipping for ${item.productId}:`, error.message);
-        // Keep default unavailable state
+        console.error(`[fulfillmentService] Error calculating shipping for ${item.productId}:`, error.message);
+        // Return default unavailable state on error
+        productResults = {
+          standard: { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false },
+          express: { cost: 0, estimatedDays: null, estimatedDaysRange: null, available: false }
+        };
       }
     }
     
