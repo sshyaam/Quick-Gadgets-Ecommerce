@@ -1,0 +1,19 @@
+name = "pricing-worker"
+main = "pricingworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "pricing_db"
+database_name = "pricing-db"
+database_id = "99524f1e-29a7-46f7-a8ca-69bd5ef5a012"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[vars]
+PRICING_WORKER_URL = "https://pricing-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+

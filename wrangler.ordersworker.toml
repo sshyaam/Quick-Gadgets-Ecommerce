@@ -1,0 +1,57 @@
+name = "orders-worker"
+main = "ordersworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "orders_db"
+database_name = "orders-db"
+database_id = "ec1cc4ac-d5f4-4fa1-8466-77efb32b49e9"
+
+[[services]]
+binding = "auth_worker"
+service = "auth-worker"
+
+[[services]]
+binding = "cart_worker"
+service = "cart-worker"
+
+[[services]]
+binding = "catalog_worker"
+service = "catalog-worker"
+
+[[services]]
+binding = "fulfillment_worker"
+service = "fulfillment-worker"
+
+[[services]]
+binding = "payment_worker"
+service = "payment-worker"
+
+[[services]]
+binding = "realtime_worker"
+service = "realtime-worker"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[secrets]
+# Honeycomb API key - set via: wrangler secret put HONEYCOMB_API_KEY --config wrangler.ordersworker.toml
+# HONEYCOMB_API_KEY
+# Optional: HONEYCOMB_ENDPOINT (default: https://api.honeycomb.io/v1/traces)
+# Optional: HONEYCOMB_DATASET (default: orders-worker)
+# Optional: SERVICE_VERSION (default: 1.0.0)
+
+[vars]
+ORDERS_WORKER_URL = "https://orders-worker.shyaamdps.workers.dev"
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+CART_WORKER_URL = "https://cart-worker.shyaamdps.workers.dev"
+FULFILLMENT_WORKER_URL = "https://fulfillment-worker.shyaamdps.workers.dev"
+PAYMENT_WORKER_URL = "https://payment-worker.shyaamdps.workers.dev"
+REALTIME_WORKER_URL = "https://realtime-worker.shyaamdps.workers.dev"
+RATING_WORKER_URL = "https://rating-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+ENCRYPTION_KEY = "ECOMSECRET"
+

@@ -1,0 +1,31 @@
+name = "payment-worker"
+main = "paymentworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "payment_db"
+database_name = "payment-db"
+database_id = "1a8460a2-ea75-4578-8f7c-44f3d9d17fce"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[vars]
+PAYMENT_WORKER_URL = "https://payment-worker.shyaamdps.workers.dev"
+PAYPAL_SANDBOX = "true"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+ENCRYPTION_KEY = "ECOMSECRET"
+INR_TO_USD_RATE = "83"  # INR to USD conversion rate for PayPal Sandbox (INR not supported in Sandbox)
+
+[secrets]
+# PayPal secrets - set these via: wrangler secret put SECRET_NAME --config wrangler.paymentworker.toml
+# PAYPAL_CLIENT_ID
+# PAYPAL_CLIENT_SECRET
+# Honeycomb API key - set via: wrangler secret put HONEYCOMB_API_KEY --config wrangler.paymentworker.toml
+# HONEYCOMB_API_KEY
+# Optional: HONEYCOMB_ENDPOINT (default: https://api.honeycomb.io/v1/traces)
+# Optional: HONEYCOMB_DATASET (default: payment-worker)
+# Optional: SERVICE_VERSION (default: 1.0.0)
+

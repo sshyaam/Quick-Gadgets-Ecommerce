@@ -1,0 +1,39 @@
+name = "cart-worker"
+main = "cartworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "cart_db"
+database_name = "cart-db"
+database_id = "ccb2196b-4c59-485c-932d-598d9a3fbf53"
+
+[[services]]
+binding = "auth_worker"
+service = "auth-worker"
+
+[[services]]
+binding = "catalog_worker"
+service = "catalog-worker"
+
+[[services]]
+binding = "pricing_worker"
+service = "pricing-worker"
+
+[[services]]
+binding = "fulfillment_worker"
+service = "fulfillment-worker"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[vars]
+CART_WORKER_URL = "https://cart-worker.shyaamdps.workers.dev"
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+PRICING_WORKER_URL = "https://pricing-worker.shyaamdps.workers.dev"
+FULFILLMENT_WORKER_URL = "https://fulfillment-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+ENCRYPTION_KEY = "ECOMSECRET"
+

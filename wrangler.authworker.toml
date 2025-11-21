@@ -1,0 +1,27 @@
+name = "auth-worker"
+main = "authworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "auth_db"
+database_name = "auth-db"
+database_id = "60df4686-c422-4112-95d6-7f68cbe270e7"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[vars]
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+ENCRYPTION_KEY = "ECOMSECRET"
+
+[secrets]
+# Honeycomb API key - set via: wrangler secret put HONEYCOMB_API_KEY --config wrangler.authworker.toml
+# HONEYCOMB_API_KEY
+# Optional: HONEYCOMB_ENDPOINT (default: https://api.honeycomb.io/v1/traces)
+# Optional: HONEYCOMB_DATASET (default: auth-worker)
+# Optional: SERVICE_VERSION (default: 1.0.0)
+

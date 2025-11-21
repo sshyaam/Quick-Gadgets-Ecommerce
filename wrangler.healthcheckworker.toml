@@ -1,0 +1,108 @@
+name = "health-check-worker"
+main = "healthcheckworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "auth_db"
+database_name = "auth-db"
+database_id = "60df4686-c422-4112-95d6-7f68cbe270e7"
+
+[[d1_databases]]
+binding = "catalog_db"
+database_name = "catalog-db"
+database_id = "1c3b15d7-e278-4d29-8b7f-f3b08898c1c0"
+
+[[d1_databases]]
+binding = "pricing_db"
+database_name = "pricing-db"
+database_id = "99524f1e-29a7-46f7-a8ca-69bd5ef5a012"
+
+[[d1_databases]]
+binding = "fulfillment_db"
+database_name = "fulfillment-db"
+database_id = "4708b2cc-fa58-4015-ad8e-7b689f652b79"
+
+[[d1_databases]]
+binding = "cart_db"
+database_name = "cart-db"
+database_id = "ccb2196b-4c59-485c-932d-598d9a3fbf53"
+
+[[d1_databases]]
+binding = "payment_db"
+database_name = "payment-db"
+database_id = "1a8460a2-ea75-4578-8f7c-44f3d9d17fce"
+
+[[d1_databases]]
+binding = "orders_db"
+database_name = "orders-db"
+database_id = "ec1cc4ac-d5f4-4fa1-8466-77efb32b49e9"
+
+[[d1_databases]]
+binding = "rating_db"
+database_name = "rating-db"
+database_id = "72c402c1-9f34-412e-a3b1-97ea0fa2364d"
+
+[[kv_namespaces]]
+binding = "product_cache"
+id = "50023320f7494d10935af8bee9eff7c7"
+
+[[kv_namespaces]]
+binding = "log_state"
+id = "1f34d7f68f1044678a6b97a88f4ccbbe"
+
+[[r2_buckets]]
+binding = "log_bucket"
+bucket_name = "log-bucket"
+
+[[services]]
+binding = "auth_worker"
+service = "auth-worker"
+
+[[services]]
+binding = "catalog_worker"
+service = "catalog-worker"
+
+[[services]]
+binding = "pricing_worker"
+service = "pricing-worker"
+
+[[services]]
+binding = "fulfillment_worker"
+service = "fulfillment-worker"
+
+[[services]]
+binding = "cart_worker"
+service = "cart-worker"
+
+[[services]]
+binding = "payment_worker"
+service = "payment-worker"
+
+[[services]]
+binding = "orders_worker"
+service = "orders-worker"
+
+[[services]]
+binding = "rating_worker"
+service = "rating-worker"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[[services]]
+binding = "realtime_worker"
+service = "realtime-worker"
+
+[vars]
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+CATALOG_WORKER_URL = "https://catalog-worker.shyaamdps.workers.dev"
+PRICING_WORKER_URL = "https://pricing-worker.shyaamdps.workers.dev"
+FULFILLMENT_WORKER_URL = "https://fulfillment-worker.shyaamdps.workers.dev"
+CART_WORKER_URL = "https://cart-worker.shyaamdps.workers.dev"
+PAYMENT_WORKER_URL = "https://payment-worker.shyaamdps.workers.dev"
+ORDERS_WORKER_URL = "https://orders-worker.shyaamdps.workers.dev"
+RATING_WORKER_URL = "https://rating-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+REALTIME_WORKER_URL = "https://realtime-worker.shyaamdps.workers.dev"

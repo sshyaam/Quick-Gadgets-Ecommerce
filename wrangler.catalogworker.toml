@@ -1,0 +1,49 @@
+name = "catalog-worker"
+main = "catalogworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "catalog_db"
+database_name = "catalog-db"
+database_id = "1c3b15d7-e278-4d29-8b7f-f3b08898c1c0"
+
+[[kv_namespaces]]
+binding = "product_cache"
+id = "50023320f7494d10935af8bee9eff7c7"
+
+[[r2_buckets]]
+binding = "product_images"
+bucket_name = "product-images"
+
+[[services]]
+binding = "pricing_worker"
+service = "pricing-worker"
+
+[[services]]
+binding = "fulfillment_worker"
+service = "fulfillment-worker"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[[services]]
+binding = "auth_worker"
+service = "auth-worker"
+
+[secrets]
+# Honeycomb API key - set via: wrangler secret put HONEYCOMB_API_KEY --config wrangler.catalogworker.toml
+# HONEYCOMB_API_KEY
+# Optional: HONEYCOMB_ENDPOINT (default: https://api.honeycomb.io/v1/traces)
+# Optional: HONEYCOMB_DATASET (default: catalog-worker)
+# Optional: SERVICE_VERSION (default: 1.0.0)
+
+[vars]
+CATALOG_WORKER_URL = "https://catalog-worker.shyaamdps.workers.dev"
+PRICING_WORKER_URL = "https://pricing-worker.shyaamdps.workers.dev"
+FULFILLMENT_WORKER_URL = "https://fulfillment-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+

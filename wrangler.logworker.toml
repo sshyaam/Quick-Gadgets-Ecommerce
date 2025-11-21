@@ -1,0 +1,30 @@
+name = "log-worker"
+main = "logworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "log_bucket"
+bucket_name = "log-bucket"
+
+[[kv_namespaces]]
+binding = "log_state"
+id = "1f34d7f68f1044678a6b97a88f4ccbbe"
+
+[observability]
+[observability.logs]
+enabled = false
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+# Cron trigger to run daily at midnight UTC
+# Format: minute hour day month weekday
+# This runs at 00:00 UTC every day
+[triggers]
+crons = ["0 0 * * *"]
+
+[vars]
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+

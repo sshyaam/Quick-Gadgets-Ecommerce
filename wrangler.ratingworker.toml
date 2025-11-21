@@ -1,0 +1,30 @@
+name = "rating-worker"
+main = "ratingworker/index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "rating_db"
+database_name = "rating-db"
+database_id = "72c402c1-9f34-412e-a3b1-97ea0fa2364d"
+
+[[services]]
+binding = "auth_worker"
+service = "auth-worker"
+
+[[services]]
+binding = "orders_worker"
+service = "orders-worker"
+
+[[services]]
+binding = "log_worker"
+service = "log-worker"
+
+[vars]
+RATING_WORKER_URL = "https://rating-worker.shyaamdps.workers.dev"
+LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
+AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
+ORDERS_WORKER_URL = "https://orders-worker.shyaamdps.workers.dev"
+INTER_WORKER_API_KEY = "ECOMSECRET"
+ENCRYPTION_KEY = "ECOMSECRET"
+

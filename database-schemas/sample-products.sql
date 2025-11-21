@@ -1,0 +1,820 @@
+-- Sample Products with Extensive JSON Attributes
+-- Insert these into the catalog database
+
+-- Product 1: High-end Smartphone
+INSERT INTO products (product_id, data, created_at, updated_at) VALUES (
+  'PROD-001',
+  '{
+    "name": "TechMax Pro 15 Ultra",
+    "description": "Flagship smartphone with cutting-edge technology, featuring a 6.9-inch AMOLED display, 200MP camera system, and AI-powered performance optimization.",
+    "category": "smartphones",
+    "brand": "TechMax",
+    "model": "Pro 15 Ultra",
+    "sku": "TM-P15U-256-BLK",
+    "manufacturer": "TechMax Electronics",
+    "warranty": "2 years",
+    "warrantyType": "manufacturer",
+    "color": "Midnight Black",
+    "colors": ["Midnight Black", "Arctic White", "Ocean Blue", "Rose Gold"],
+    "display": {
+      "size": "6.9 inches",
+      "type": "AMOLED",
+      "resolution": "3200x1440",
+      "pixelDensity": "512 ppi",
+      "refreshRate": "120Hz",
+      "brightness": "2000 nits peak",
+      "hdr": true,
+      "hdrFormats": ["HDR10", "HDR10+", "Dolby Vision"],
+      "screenProtection": "Gorilla Glass Victus 3",
+      "bezels": "ultra-thin",
+      "notch": "punch-hole",
+      "alwaysOn": true
+    },
+    "processor": {
+      "chipset": "Snapdragon 8 Gen 4",
+      "cpu": "Octa-core (1x3.4GHz Cortex-X5 & 3x3.0GHz Cortex-A730 & 4x2.0GHz Cortex-A520)",
+      "gpu": "Adreno 760",
+      "process": "3nm",
+      "aiChip": "Hexagon NPU Gen 4",
+      "benchmark": "Antutu: 2,100,000+"
+    },
+    "memory": {
+      "ram": "16GB LPDDR5X",
+      "storage": "512GB UFS 4.0",
+      "storageOptions": ["256GB", "512GB", "1TB"],
+      "expandable": false,
+      "ramType": "LPDDR5X",
+      "storageType": "UFS 4.0"
+    },
+    "camera": {
+      "rear": {
+        "primary": {
+          "megapixels": 200,
+          "aperture": "f/1.7",
+          "sensor": "Samsung ISOCELL HP3",
+          "ois": true,
+          "pixelSize": "0.56μm",
+          "zoom": "10x optical, 100x digital"
+        },
+        "ultrawide": {
+          "megapixels": 50,
+          "aperture": "f/2.2",
+          "fov": "123°"
+        },
+        "telephoto": {
+          "megapixels": 50,
+          "aperture": "f/2.4",
+          "zoom": "3x optical"
+        },
+        "periscope": {
+          "megapixels": 10,
+          "aperture": "f/4.9",
+          "zoom": "10x optical"
+        }
+      },
+      "front": {
+        "megapixels": 32,
+        "aperture": "f/2.0",
+        "features": ["4K video", "portrait mode", "night mode"]
+      },
+      "video": {
+        "rear": "8K@30fps, 4K@120fps, 1080p@240fps",
+        "front": "4K@60fps",
+        "stabilization": "OIS + EIS",
+        "hdr": true,
+        "slowMotion": "1080p@960fps"
+      },
+      "features": ["Night Mode", "Portrait Mode", "Pro Mode", "Astrophotography", "AI Scene Detection", "8K Video Recording"]
+    },
+    "battery": {
+      "capacity": "5500mAh",
+      "type": "Li-Po",
+      "charging": {
+        "wired": "120W Super Fast Charging",
+        "wireless": "50W",
+        "reverse": "15W",
+        "time": "0-100% in 18 minutes"
+      },
+      "endurance": "2 days typical use"
+    },
+    "connectivity": {
+      "network": "5G (SA/NSA), 4G LTE",
+      "bands": "GSM, CDMA, HSPA, EVDO, LTE, 5G",
+      "wifi": "Wi-Fi 7 (802.11be), dual-band, Wi-Fi Direct, hotspot",
+      "bluetooth": "5.4, A2DP, LE, aptX HD",
+      "nfc": true,
+      "usb": "USB Type-C 3.2, OTG",
+      "gps": "GPS, GLONASS, BDS, GALILEO, QZSS",
+      "radio": "No",
+      "infrared": true
+    },
+    "audio": {
+      "speakers": "Stereo speakers (tuned by Harman Kardon)",
+      "jack": "No",
+      "dac": "32-bit/384kHz audio",
+      "features": ["Dolby Atmos", "Hi-Res Audio", "Spatial Audio"]
+    },
+    "sensors": ["Fingerprint (under display, ultrasonic)", "Face ID (3D)", "Accelerometer", "Gyro", "Proximity", "Compass", "Barometer", "Color spectrum", "Heart rate", "SpO2"],
+    "security": {
+      "fingerprint": "Ultrasonic under-display",
+      "faceUnlock": "3D Face Recognition",
+      "encryption": "256-bit",
+      "secureElement": true,
+      "knox": true
+    },
+    "software": {
+      "os": "Android 15",
+      "ui": "One UI 7.0",
+      "updates": "5 years OS, 7 years security",
+      "preinstalled": ["Samsung Pay", "Bixby", "Samsung Health"]
+    },
+    "dimensions": {
+      "length": "163.3 mm",
+      "width": "76.9 mm",
+      "thickness": "8.9 mm",
+      "weight": "233 grams"
+    },
+    "materials": {
+      "frame": "Aluminum alloy",
+      "back": "Gorilla Glass Victus 3",
+      "front": "Gorilla Glass Victus 3",
+      "ipRating": "IP68 (1.5m for 30 mins)"
+    },
+    "accessories": ["USB-C cable", "SIM ejector tool", "Quick Start Guide", "Protective case", "Screen protector"],
+    "boxContents": ["Phone", "USB-C Cable", "120W Charger", "SIM Ejector Tool", "Quick Start Guide", "Warranty Card"],
+    "certifications": ["CE", "FCC", "IC", "RoHS", "WEEE"],
+    "compatibility": {
+      "carriers": ["Verizon", "AT&T", "T-Mobile", "Sprint"],
+      "sim": "Dual SIM (Nano-SIM, eSIM)",
+      "volte": true,
+      "wifiCalling": true
+    },
+    "features": ["Wireless charging", "Reverse wireless charging", "S Pen support", "DeX mode", "Samsung Pay", "Bixby", "Always On Display", "Edge panels", "One-handed mode"],
+    "performance": {
+      "antutu": "2,100,000+",
+      "geekbench": "Single: 2,200, Multi: 7,800",
+      "gaming": "120fps gaming support",
+      "thermal": "Vapor chamber cooling"
+    },
+    "environmental": {
+      "energyRating": "A+",
+      "recyclable": true,
+      "packaging": "100% recyclable",
+      "carbonFootprint": "45kg CO2"
+    },
+    "priceRange": "Premium",
+    "targetAudience": "Power users, professionals, content creators",
+    "releaseDate": "2024-10-15",
+    "availability": "In Stock",
+    "rating": 4.8,
+    "reviews": 12500,
+    "tags": ["flagship", "premium", "camera", "gaming", "5G", "wireless-charging"]
+  }',
+  datetime('now'),
+  datetime('now')
+);
+
+-- Product 2: Gaming Laptop
+INSERT INTO products (product_id, data, created_at, updated_at) VALUES (
+  'PROD-002',
+  '{
+    "name": "GameForce X1 Pro",
+    "description": "High-performance gaming laptop with RTX 4090, Intel Core i9-14900HX, 32GB RAM, and 2TB SSD. Perfect for gaming, content creation, and professional work.",
+    "category": "laptops",
+    "brand": "GameForce",
+    "model": "X1 Pro",
+    "sku": "GF-X1P-RTX4090-32-2TB",
+    "manufacturer": "GameForce Technologies",
+    "warranty": "3 years",
+    "warrantyType": "manufacturer with on-site service",
+    "color": "Metallic Gray",
+    "colors": ["Metallic Gray", "Carbon Black"],
+    "display": {
+      "size": "17.3 inches",
+      "type": "IPS LCD",
+      "resolution": "2560x1440 (QHD)",
+      "refreshRate": "240Hz",
+      "responseTime": "3ms",
+      "brightness": "400 nits",
+      "colorGamut": "100% sRGB, 95% DCI-P3",
+      "hdr": true,
+      "hdrFormats": ["HDR10", "Dolby Vision"],
+      "gsync": true,
+      "freesync": true,
+      "matte": true,
+      "bezels": "4.9mm thin"
+    },
+    "processor": {
+      "chipset": "Intel Core i9-14900HX",
+      "cores": 24,
+      "threads": 32,
+      "baseClock": "2.2GHz",
+      "boostClock": "5.8GHz",
+      "cache": "36MB L3",
+      "tdp": "157W",
+      "architecture": "Raptor Lake Refresh",
+      "process": "Intel 7 (10nm)",
+      "benchmark": "Cinebench R23: 35,000+"
+    },
+    "graphics": {
+      "dedicated": {
+        "model": "NVIDIA GeForce RTX 4090 Laptop",
+        "vram": "16GB GDDR6X",
+        "cudaCores": 9728,
+        "rtCores": 76,
+        "tensorCores": 304,
+        "boostClock": "2040MHz",
+        "tdp": "175W",
+        "dlss": "3.5",
+        "rayTracing": true,
+        "features": ["DLSS 3.5", "Ray Tracing", "Reflex", "Broadcast"]
+      },
+      "integrated": "Intel UHD Graphics 770"
+    },
+    "memory": {
+      "ram": "32GB DDR5-5600",
+      "ramSlots": 2,
+      "maxRam": "64GB",
+      "storage": "2TB NVMe PCIe 4.0 SSD",
+      "storageSlots": 2,
+      "storageType": "M.2 NVMe PCIe 4.0",
+      "maxStorage": "8TB (2x 4TB)",
+      "raid": "RAID 0/1 support"
+    },
+    "ports": {
+      "usb": {
+        "usbA": ["2x USB 3.2 Gen 2", "1x USB 2.0"],
+        "usbC": ["2x USB-C 3.2 Gen 2 (Thunderbolt 4)", "1x USB-C 3.2 Gen 2"],
+        "thunderbolt": "2x Thunderbolt 4"
+      },
+      "video": ["1x HDMI 2.1", "1x Mini DisplayPort 1.4"],
+      "audio": ["1x 3.5mm headphone jack", "1x 3.5mm microphone jack"],
+      "network": "RJ-45 Ethernet (2.5Gbps)",
+      "other": ["1x SD card reader", "1x Kensington lock"]
+    },
+    "connectivity": {
+      "wifi": "Wi-Fi 6E (802.11ax), dual-band, 2x2 MU-MIMO",
+      "bluetooth": "5.3",
+      "ethernet": "2.5 Gigabit Ethernet",
+      "cellular": "Optional 5G module"
+    },
+    "audio": {
+      "speakers": "2x 2W speakers + 2x 1W tweeters (DTS:X Ultra)",
+      "microphone": "Dual array microphones with noise cancellation",
+      "dac": "ESS Sabre Hi-Fi DAC",
+      "features": ["DTS:X Ultra", "Nahimic 3D Audio", "7.1 Virtual Surround"]
+    },
+    "keyboard": {
+      "type": "Mechanical (Cherry MX Blue equivalent)",
+      "layout": "Full-size with numpad",
+      "backlight": "RGB per-key",
+      "keyTravel": "1.8mm",
+      "actuation": "50g",
+      "antiGhosting": "N-key rollover",
+      "macroKeys": "5 programmable macro keys"
+    },
+    "trackpad": {
+      "size": "150mm x 90mm",
+      "type": "Precision glass trackpad",
+      "gestures": "Multi-touch gestures",
+      "buttons": "Integrated clickpad"
+    },
+    "webcam": {
+      "resolution": "1080p",
+      "fps": 30,
+      "features": ["Privacy shutter", "IR camera for Windows Hello", "Temporal Noise Reduction"]
+    },
+    "battery": {
+      "capacity": "99.9Wh",
+      "type": "6-cell Li-ion",
+      "life": "Up to 6 hours (light use)",
+      "charging": "330W AC adapter",
+      "fastCharge": "50% in 30 minutes",
+      "usbCCharging": true
+    },
+    "cooling": {
+      "system": "Dual-fan cooling with 6 heat pipes",
+      "fans": "2x 12V fans with liquid metal thermal compound",
+      "modes": ["Silent", "Balanced", "Performance", "Turbo"],
+      "vaporChamber": true,
+      "airflow": "Quad-exhaust design"
+    },
+    "dimensions": {
+      "length": "399 mm",
+      "width": "299 mm",
+      "thickness": "24.9 mm",
+      "weight": "2.8 kg"
+    },
+    "materials": {
+      "chassis": "Aluminum-magnesium alloy",
+      "lid": "Aluminum with RGB logo",
+      "keyboard": "Aluminum",
+      "durability": "MIL-STD-810H tested"
+    },
+    "software": {
+      "os": "Windows 11 Pro",
+      "preinstalled": ["GameForce Control Center", "NVIDIA GeForce Experience", "Microsoft Office 365 Trial"],
+      "bloatware": "Minimal"
+    },
+    "security": {
+      "fingerprint": "Integrated in power button",
+      "faceUnlock": "Windows Hello (IR camera)",
+      "tpm": "TPM 2.0",
+      "kensington": true,
+      "privacyShutter": true
+    },
+    "performance": {
+      "cinebench": "R23 Multi: 35,000+",
+      "3dmark": "Time Spy: 22,000+",
+      "gaming": "1440p Ultra: 120+ fps (most AAA games)",
+      "contentCreation": "4K video editing, 3D rendering optimized"
+    },
+    "accessories": {
+      "included": ["330W AC adapter", "Power cord", "Quick start guide", "Warranty card"],
+      "optional": ["Gaming mouse", "Mechanical keyboard", "External monitor", "Laptop stand", "Cooling pad"]
+    },
+    "certifications": {
+      "safety": ["CE", "FCC", "IC", "RoHS"],
+      "environmental": ["Energy Star", "EPEAT Gold"],
+      "gaming": ["NVIDIA G-SYNC Compatible", "AMD FreeSync Premium"]
+    },
+    "compatibility": {
+      "vr": "VR Ready (Oculus, HTC Vive, Valve Index)",
+      "externalDisplays": "Up to 4 external displays",
+      "thunderbolt": "Thunderbolt 4 certified"
+    },
+    "features": ["RGB lighting", "Gaming mode", "Content creation mode", "Battery saver mode", "Fan control", "Overclocking", "Macro keys", "Game recording", "Streaming optimized"],
+    "targetAudience": "Gamers, content creators, professionals",
+    "priceRange": "Premium",
+    "releaseDate": "2024-09-20",
+    "availability": "In Stock",
+    "rating": 4.9,
+    "reviews": 3200,
+    "tags": ["gaming", "rtx-4090", "high-performance", "content-creation", "rgb", "premium"]
+  }',
+  datetime('now'),
+  datetime('now')
+);
+
+-- Product 3: Premium Tablet
+INSERT INTO products (product_id, data, created_at, updated_at) VALUES (
+  'PROD-003',
+  '{
+    "name": "TabMax Pro 12.9",
+    "description": "Professional tablet with 12.9-inch Mini-LED display, M3 chip, and Apple Pencil support. Perfect for artists, designers, and professionals.",
+    "category": "tablets",
+    "brand": "TabMax",
+    "model": "Pro 12.9",
+    "sku": "TM-TP12.9-256-WIFI",
+    "manufacturer": "TabMax Inc.",
+    "warranty": "1 year",
+    "warrantyType": "manufacturer",
+    "color": "Space Gray",
+    "colors": ["Space Gray", "Silver"],
+    "display": {
+      "size": "12.9 inches",
+      "type": "Liquid Retina XDR (Mini-LED)",
+      "resolution": "2732x2048",
+      "pixelDensity": "264 ppi",
+      "brightness": "600 nits (typical), 1000 nits (peak), 1600 nits (HDR)",
+      "contrast": "1,000,000:1",
+      "colorGamut": "P3 wide color",
+      "trueTone": true,
+      "proMotion": "120Hz adaptive refresh rate",
+      "hdr": true,
+      "hdrFormats": ["HDR10", "Dolby Vision"],
+      "laminated": true,
+      "antiReflective": true,
+      "oleophobic": true
+    },
+    "processor": {
+      "chipset": "M3 chip",
+      "cpu": "8-core (4 performance + 4 efficiency)",
+      "gpu": "10-core GPU",
+      "neuralEngine": "16-core Neural Engine",
+      "process": "3nm",
+      "benchmark": "Geekbench 6: Single 2,800, Multi 12,000"
+    },
+    "memory": {
+      "ram": "16GB unified memory",
+      "storage": "256GB",
+      "storageOptions": ["256GB", "512GB", "1TB", "2TB"],
+      "type": "NVMe SSD"
+    },
+    "camera": {
+      "rear": {
+        "primary": {
+          "megapixels": 12,
+          "aperture": "f/1.8",
+          "features": ["4K video", "Smart HDR 4", "Portrait mode", "LiDAR Scanner"]
+        },
+        "ultrawide": {
+          "megapixels": 10,
+          "aperture": "f/2.4",
+          "fov": "125°"
+        }
+      },
+      "front": {
+        "megapixels": 12,
+        "aperture": "f/2.4",
+        "features": ["Center Stage", "Portrait mode", "Animoji", "Memoji"]
+      },
+      "video": {
+        "rear": "4K@60fps, 1080p@240fps",
+        "front": "1080p@60fps",
+        "features": ["Cinematic mode", "ProRes", "HDR video", "Slo-mo"]
+      },
+      "lidar": true
+    },
+    "connectivity": {
+      "wifi": "Wi-Fi 6E (802.11ax)",
+      "bluetooth": "5.3",
+      "cellular": "Optional 5G (mmWave and sub-6GHz)",
+      "usb": "USB-C (Thunderbolt 4)",
+      "gps": "Built-in GPS, GLONASS, Galileo, QZSS, BeiDou"
+    },
+    "audio": {
+      "speakers": "Four-speaker audio system",
+      "microphone": "Five studio-quality microphones",
+      "features": ["Spatial Audio", "Dolby Atmos", "Stereo recording"]
+    },
+    "stylus": {
+      "support": "Apple Pencil (2nd generation)",
+      "pressure": "4096 levels",
+      "tilt": true,
+      "latency": "9ms",
+      "charging": "Wireless charging on device",
+      "features": ["Double-tap", "Hover", "Pixel-perfect precision"]
+    },
+    "keyboard": {
+      "support": "Magic Keyboard, Smart Keyboard Folio",
+      "trackpad": "Magic Keyboard includes trackpad",
+      "backlight": true
+    },
+    "sensors": ["Face ID", "LiDAR Scanner", "Three-axis gyro", "Accelerometer", "Ambient light sensor", "Barometer"],
+    "security": {
+      "faceId": "TrueDepth camera system",
+      "touchId": false,
+      "secureEnclave": true,
+      "encryption": "Hardware-accelerated AES-256"
+    },
+    "software": {
+      "os": "iPadOS 17",
+      "apps": "Full App Store access",
+      "productivity": "Pages, Numbers, Keynote included",
+      "creativity": "GarageBand, iMovie included",
+      "updates": "5+ years of OS updates"
+    },
+    "battery": {
+      "capacity": "40.88 Wh",
+      "life": "Up to 10 hours (web browsing, video)",
+      "charging": "USB-C Power Delivery (up to 35W)",
+      "fastCharge": "50% in 30 minutes"
+    },
+    "dimensions": {
+      "length": "280.6 mm",
+      "width": "214.9 mm",
+      "thickness": "6.4 mm",
+      "weight": "682 grams (Wi-Fi), 684 grams (5G)"
+    },
+    "materials": {
+      "chassis": "100% recycled aluminum",
+      "display": "Glass with anti-reflective coating",
+      "durability": "IP68 equivalent (unofficial)"
+    },
+    "accessories": {
+      "included": ["USB-C cable", "20W USB-C power adapter"],
+      "optional": ["Apple Pencil (2nd gen)", "Magic Keyboard", "Smart Keyboard Folio", "Smart Folio", "Logitech Combo Touch"]
+    },
+    "features": ["Face ID", "Center Stage", "Stage Manager", "External display support", "Desktop-class apps", "Apple Pencil hover", "Reference Mode", "ProRes video"],
+    "useCases": ["Digital art", "Photo editing", "Video editing", "3D modeling", "Note-taking", "Productivity", "Gaming", "Content consumption"],
+    "targetAudience": "Artists, designers, professionals, students",
+    "priceRange": "Premium",
+    "releaseDate": "2024-10-22",
+    "availability": "In Stock",
+    "rating": 4.7,
+    "reviews": 8900,
+    "tags": ["tablet", "pro", "art", "design", "productivity", "apple-pencil", "premium"]
+  }',
+  datetime('now'),
+  datetime('now')
+);
+
+-- Product 4: Wireless Earbuds
+INSERT INTO products (product_id, data, created_at, updated_at) VALUES (
+  'PROD-004',
+  '{
+    "name": "SoundWave Pro Max",
+    "description": "Premium true wireless earbuds with active noise cancellation, spatial audio, and 30-hour battery life. Perfect for music lovers and professionals.",
+    "category": "accessories",
+    "brand": "SoundWave",
+    "model": "Pro Max",
+    "sku": "SW-PM-BLK",
+    "manufacturer": "SoundWave Audio",
+    "warranty": "2 years",
+    "warrantyType": "manufacturer",
+    "color": "Black",
+    "colors": ["Black", "White", "Blue", "Red"],
+    "audio": {
+      "drivers": {
+        "type": "Dynamic + Balanced Armature hybrid",
+        "size": "11mm dynamic + 6mm balanced armature",
+        "frequency": "20Hz - 40kHz",
+        "impedance": "32 ohms",
+        "sensitivity": "105dB"
+      },
+      "codecs": ["SBC", "AAC", "aptX", "aptX HD", "aptX Adaptive", "LDAC", "LHDC"],
+      "bitrate": "Up to 990kbps (LDAC)",
+      "sampleRate": "Up to 96kHz/24-bit",
+      "spatialAudio": true,
+      "dolbyAtmos": true,
+      "hiRes": true,
+      "hiResCertified": "Hi-Res Audio Wireless certified"
+    },
+    "noiseCancellation": {
+      "anc": "Active Noise Cancellation (Hybrid)",
+      "levels": ["Off", "Transparency", "ANC", "Adaptive"],
+      "microphones": "6 microphones (3 per earbud)",
+      "reduction": "Up to 45dB",
+      "adaptive": true,
+      "windNoise": "Wind noise reduction"
+    },
+    "microphone": {
+      "count": "6 total (3 per earbud)",
+      "type": "Beamforming with AI",
+      "quality": "Crystal-clear voice",
+      "noiseCancellation": "AI-powered noise cancellation",
+      "features": ["Voice isolation", "Background noise reduction", "Echo cancellation"]
+    },
+    "connectivity": {
+      "bluetooth": "5.3",
+      "range": "Up to 10 meters (33 feet)",
+      "multipoint": "Connect to 2 devices simultaneously",
+      "latency": "Low latency mode (40ms)",
+      "stability": "Advanced connection stability"
+    },
+    "battery": {
+      "earbuds": {
+        "capacity": "60mAh per earbud",
+        "life": "Up to 8 hours (ANC off), 6 hours (ANC on)",
+        "charging": "15 minutes = 3 hours playback"
+      },
+      "case": {
+        "capacity": "500mAh",
+        "life": "Up to 30 hours total (with case)",
+        "charges": "3.5 full charges",
+        "charging": "Wireless charging + USB-C"
+      },
+      "wirelessCharging": true,
+      "fastCharge": "15 minutes = 3 hours",
+      "powerDelivery": "USB-C Power Delivery"
+    },
+    "controls": {
+      "touch": "Touch-sensitive controls",
+      "gestures": ["Tap", "Double tap", "Triple tap", "Long press", "Swipe"],
+      "customizable": true,
+      "voiceAssistant": "Siri, Google Assistant, Alexa support"
+    },
+    "sensors": {
+      "proximity": "Auto play/pause when removed",
+      "accelerometer": "Motion detection",
+      "gyroscope": "Head tracking for spatial audio",
+      "heartRate": "Optional heart rate monitoring"
+    },
+    "waterResistance": {
+      "rating": "IPX7",
+      "description": "Waterproof up to 1 meter for 30 minutes",
+      "sweat": "Sweat and water resistant"
+    },
+    "comfort": {
+      "earTips": "3 sizes included (S, M, L)",
+      "material": "Silicone with memory foam option",
+      "fit": "Ergonomic design",
+      "weight": "5.5g per earbud",
+      "allDay": "Comfortable for all-day wear"
+    },
+    "features": {
+      "spatialAudio": "360-degree spatial audio with head tracking",
+      "equalizer": "10-band customizable EQ",
+      "presets": ["Bass Boost", "Treble Boost", "Vocal", "Flat", "Custom"],
+      "findMy": "Find My Earbuds feature",
+      "autoPlayPause": true,
+      "transparencyMode": true,
+      "ambientSound": true,
+      "gameMode": "Low latency gaming mode",
+      "multipoint": "Connect to 2 devices"
+    },
+    "compatibility": {
+      "devices": ["iOS", "Android", "Windows", "macOS", "Smart TVs"],
+      "assistants": ["Siri", "Google Assistant", "Alexa"],
+      "apps": "Dedicated app for iOS and Android"
+    },
+    "dimensions": {
+      "earbuds": {
+        "length": "28mm",
+        "width": "21mm",
+        "height": "24mm",
+        "weight": "5.5g each"
+      },
+      "case": {
+        "length": "65mm",
+        "width": "45mm",
+        "height": "30mm",
+        "weight": "45g"
+      }
+    },
+    "materials": {
+      "earbuds": "Plastic with matte finish",
+      "case": "Aluminum with matte finish",
+      "earTips": "Medical-grade silicone"
+    },
+    "accessories": {
+      "included": ["Earbuds", "Charging case", "3 pairs ear tips (S, M, L)", "USB-C cable", "Quick start guide", "Warranty card"],
+      "optional": ["Memory foam ear tips", "Wireless charging pad", "Carrying case"]
+    },
+    "certifications": {
+      "audio": ["Hi-Res Audio Wireless", "THX Certified"],
+      "safety": ["CE", "FCC", "IC", "RoHS"],
+      "environmental": ["REACH compliant"]
+    },
+    "performance": {
+      "latency": "40ms (low latency mode)",
+      "stability": "99.9% connection stability",
+      "range": "10 meters (33 feet)",
+      "batteryEfficiency": "Industry-leading efficiency"
+    },
+    "targetAudience": "Music lovers, professionals, commuters, athletes",
+    "priceRange": "Premium",
+    "releaseDate": "2024-08-15",
+    "availability": "In Stock",
+    "rating": 4.6,
+    "reviews": 15200,
+    "tags": ["earbuds", "wireless", "anc", "audio", "premium", "bluetooth"]
+  }',
+  datetime('now'),
+  datetime('now')
+);
+
+-- Product 5: Smart Watch
+INSERT INTO products (product_id, data, created_at, updated_at) VALUES (
+  'PROD-005',
+  '{
+    "name": "FitMax Pro 2",
+    "description": "Advanced smartwatch with health monitoring, GPS, LTE connectivity, and 7-day battery life. Perfect for fitness enthusiasts and professionals.",
+    "category": "accessories",
+    "brand": "FitMax",
+    "model": "Pro 2",
+    "sku": "FM-P2-45-BLK",
+    "manufacturer": "FitMax Wearables",
+    "warranty": "2 years",
+    "warrantyType": "manufacturer",
+    "color": "Black",
+    "colors": ["Black", "Silver", "Gold", "Space Gray", "Midnight Blue"],
+    "display": {
+      "size": "1.9 inches",
+      "type": "AMOLED",
+      "resolution": "454x454 pixels",
+      "pixelDensity": "326 ppi",
+      "brightness": "1000 nits peak",
+      "alwaysOn": true,
+      "touch": "Capacitive touchscreen",
+      "protection": "Sapphire crystal glass",
+      "bezels": "Ultra-thin bezels"
+    },
+    "processor": {
+      "chipset": "Dual-core 1.8GHz",
+      "ram": "2GB",
+      "storage": "32GB",
+      "os": "Wear OS 4",
+      "compatibility": "Android 8.0+, iOS 14+"
+    },
+    "health": {
+      "heartRate": {
+        "sensor": "Optical heart rate sensor",
+        "continuous": true,
+        "ecg": "ECG app (FDA cleared)",
+        "irregularRhythm": "Irregular rhythm notifications",
+        "highLow": "High and low heart rate notifications"
+      },
+      "bloodOxygen": {
+        "sensor": "Blood oxygen sensor",
+        "measurement": "SpO2 monitoring",
+        "background": "Background measurements"
+      },
+      "temperature": {
+        "sensor": "Temperature sensor",
+        "body": "Body temperature tracking",
+        "skin": "Skin temperature variation"
+      },
+      "sleep": {
+        "tracking": "Advanced sleep tracking",
+        "stages": "Sleep stage detection",
+        "score": "Sleep score",
+        "alarm": "Smart wake alarm"
+      },
+      "fitness": {
+        "workouts": "100+ workout modes",
+        "gps": "Built-in GPS",
+        "altimeter": "Barometric altimeter",
+        "compass": "Digital compass",
+        "gyroscope": true,
+        "accelerometer": true
+      },
+      "women": {
+        "cycle": "Menstrual cycle tracking",
+        "fertility": "Fertility predictions",
+        "symptoms": "Symptom logging"
+      }
+    },
+    "connectivity": {
+      "bluetooth": "5.3",
+      "wifi": "Wi-Fi 802.11 b/g/n",
+      "cellular": "Optional LTE (eSIM)",
+      "nfc": true,
+      "gps": "GPS, GLONASS, Galileo, BeiDou, QZSS",
+      "payments": "NFC payments supported"
+    },
+    "battery": {
+      "capacity": "500mAh",
+      "life": "Up to 7 days (typical use)",
+      "lifeExtended": "Up to 14 days (battery saver mode)",
+      "charging": "Magnetic charging dock",
+      "time": "0-100% in 2 hours",
+      "fastCharge": "15 minutes = 1 day"
+    },
+    "sensors": ["Heart rate", "Blood oxygen", "Temperature", "Accelerometer", "Gyroscope", "Barometer", "Compass", "Ambient light", "Proximity"],
+    "waterResistance": {
+      "rating": "5 ATM (50 meters)",
+      "swimming": "Swim-proof",
+      "diving": "Not for diving"
+    },
+    "materials": {
+      "case": "Titanium",
+      "back": "Ceramic",
+      "crystal": "Sapphire crystal",
+      "band": "Fluoroelastomer (included), multiple band options available",
+      "durability": "MIL-STD-810H tested"
+    },
+    "bands": {
+      "included": "Sport band (Fluoroelastomer)",
+      "sizes": ["Small (130-180mm)", "Large (150-210mm)"],
+      "compatible": "22mm quick-release bands",
+      "options": ["Leather", "Metal", "Nylon", "Silicone", "Fabric"]
+    },
+    "features": {
+      "notifications": "Call, text, app notifications",
+      "calls": "Make and receive calls (LTE model)",
+      "music": "Music storage and playback",
+      "payments": "NFC payments",
+      "assistant": "Voice assistant (Google Assistant, Siri)",
+      "apps": "App store access",
+      "watchFaces": "1000+ watch faces",
+      "customizable": "Highly customizable",
+      "findMy": "Find My Watch feature"
+    },
+    "dimensions": {
+      "case": {
+        "diameter": "45mm",
+        "thickness": "12.5mm",
+        "weight": "52g (without band)"
+      },
+      "band": {
+        "width": "22mm",
+        "length": "Adjustable"
+      }
+    },
+    "workouts": {
+      "modes": ["Running", "Cycling", "Swimming", "Hiking", "Yoga", "Strength training", "HIIT", "Rowing", "Elliptical", "Stair climbing", "And 90+ more"],
+      "tracking": "Automatic workout detection",
+      "coaching": "Real-time coaching",
+      "recovery": "Recovery time recommendations"
+    },
+    "healthApps": {
+      "included": ["Heart Rate", "ECG", "Blood Oxygen", "Sleep", "Activity", "Workout", "Breathe", "Cycle Tracking", "Noise", "Fall Detection"],
+      "thirdParty": "Compatible with 100+ health apps"
+    },
+    "compatibility": {
+      "phones": ["iPhone (iOS 14+)", "Android (8.0+)"],
+      "apps": ["Apple Health", "Google Fit", "Strava", "MyFitnessPal", "Spotify", "And many more"]
+    },
+    "accessories": {
+      "included": ["Watch", "Sport band", "Magnetic charging dock", "Quick start guide", "Warranty card"],
+      "optional": ["Additional bands", "Screen protector", "Case", "Wireless charger"]
+    },
+    "certifications": {
+      "medical": ["FDA cleared (ECG)", "CE medical device"],
+      "safety": ["CE", "FCC", "IC", "RoHS"],
+      "environmental": ["REACH compliant"]
+    },
+    "targetAudience": "Fitness enthusiasts, health-conscious individuals, professionals",
+    "priceRange": "Premium",
+    "releaseDate": "2024-09-10",
+    "availability": "In Stock",
+    "rating": 4.8,
+    "reviews": 21000,
+    "tags": ["smartwatch", "fitness", "health", "gps", "lte", "premium"]
+  }',
+  datetime('now'),
+  datetime('now')
+);
+
