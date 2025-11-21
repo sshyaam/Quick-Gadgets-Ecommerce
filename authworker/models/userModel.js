@@ -53,6 +53,30 @@ export async function getUserById(db, userId) {
 }
 
 /**
+ * Get multiple users by IDs (batch)
+ * @param {D1Database} db - Database instance
+ * @param {string[]} userIds - Array of user IDs
+ * @returns {Promise<Object[]>} Array of user data
+ */
+export async function getUsersByIds(db, userIds) {
+  if (!userIds || userIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = userIds.map(() => '?').join(',');
+  const result = await db
+    .prepare(
+      `SELECT user_id, data, created_at, updated_at 
+       FROM users 
+       WHERE user_id IN (${placeholders}) AND deleted_at IS NULL`
+    )
+    .bind(...userIds)
+    .all();
+  
+  return result.results || [];
+}
+
+/**
  * Get user by email
  * Since data is encrypted, we need to get all users and decrypt to find the email
  * In production, consider storing email hash separately for faster lookup

@@ -75,60 +75,57 @@ export async function getRatings(request, env) {
   
   const result = await ratingService.getProductRatings(productId, page, limit, env.rating_db);
   
-  // Fetch user names for ratings
+  // Fetch user names for ratings (batch call)
   if (result.ratings && result.ratings.length > 0) {
     const userIds = [...new Set(result.ratings.map(r => r.user_id))];
     const userMap = {};
     
-    // Fetch user names from auth worker
+    // Fetch user names from auth worker in a single batch call
     try {
-      const userPromises = userIds.map(async (userId) => {
-        try {
-          let userResponse;
-          if (env.auth_worker) {
-            // Use service binding
-            const userRequest = new Request(`https://workers.dev/user/${userId}`, {
-              method: 'GET',
-              headers: {
-                'X-API-Key': env.INTER_WORKER_API_KEY,
-                'X-Worker-Request': 'true',
-              },
-            });
-            userResponse = await env.auth_worker.fetch(userRequest);
-          } else {
-            // Fallback to HTTP
-            const authUrl = env.AUTH_WORKER_URL || 'https://auth-worker.shyaamdps.workers.dev';
-            userResponse = await fetch(`${authUrl}/user/${userId}`, {
-              method: 'GET',
-              headers: {
-                'X-API-Key': env.INTER_WORKER_API_KEY,
-                'X-Worker-Request': 'true',
-              },
-            });
-          }
-          
-          if (userResponse.ok) {
-            const user = await userResponse.json();
-            return { userId, userName: user.name || 'Anonymous' };
-          }
-        } catch (error) {
-          console.error(`[ratingController] Error fetching user ${userId}:`, error.message);
-        }
-        return { userId, userName: 'Anonymous' };
-      });
+      let usersResponse;
+      if (env.auth_worker) {
+        // Use service binding
+        const batchRequest = new Request(`https://workers.dev/users/batch?userIds=${userIds.join(',')}`, {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          },
+        });
+        usersResponse = await env.auth_worker.fetch(batchRequest);
+      } else {
+        // Fallback to HTTP
+        const authUrl = env.AUTH_WORKER_URL || 'https://auth-worker.shyaamdps.workers.dev';
+        usersResponse = await fetch(`${authUrl}/users/batch?userIds=${userIds.join(',')}`, {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          },
+        });
+      }
       
-      const users = await Promise.all(userPromises);
-      users.forEach(({ userId, userName }) => {
-        userMap[userId] = userName;
-      });
+      if (usersResponse.ok) {
+        const batchResult = await usersResponse.json();
+        const users = batchResult.users || {};
+        
+        // Build user map from batch response (include name and profileImage)
+        Object.keys(users).forEach(userId => {
+          userMap[userId] = {
+            name: users[userId].name || 'Anonymous',
+            profileImage: users[userId].profileImage || null,
+          };
+        });
+      }
     } catch (error) {
-      console.error('[ratingController] Error fetching user names:', error.message);
+      console.error('[ratingController] Error fetching user names in batch:', error.message);
     }
     
-    // Add user names to ratings
+    // Add user names and profile images to ratings
     result.ratings = result.ratings.map(rating => ({
       ...rating,
-      userName: userMap[rating.user_id] || 'Anonymous',
+      userName: userMap[rating.user_id]?.name || 'Anonymous',
+      userProfileImage: userMap[rating.user_id]?.profileImage || null,
     }));
   }
   
@@ -182,6 +179,55 @@ export async function getOrderRatings(request, env) {
         createdAt: rating.created_at,
         updatedAt: rating.updated_at,
       };
+    });
+  }
+  
+  // Fetch user names for ratings (batch call)
+  if (ratings && ratings.length > 0) {
+    const userIds = [...new Set(ratings.map(r => r.user_id))];
+    const userMap = {};
+    
+    // Fetch user names from auth worker in a single batch call
+    try {
+      let usersResponse;
+      if (env.auth_worker) {
+        // Use service binding
+        const batchRequest = new Request(`https://workers.dev/users/batch?userIds=${userIds.join(',')}`, {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          },
+        });
+        usersResponse = await env.auth_worker.fetch(batchRequest);
+      } else {
+        // Fallback to HTTP
+        const authUrl = env.AUTH_WORKER_URL || 'https://auth-worker.shyaamdps.workers.dev';
+        usersResponse = await fetch(`${authUrl}/users/batch?userIds=${userIds.join(',')}`, {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          },
+        });
+      }
+      
+      if (usersResponse.ok) {
+        const batchResult = await usersResponse.json();
+        const users = batchResult.users || {};
+        
+        // Build user map from batch response
+        Object.keys(users).forEach(userId => {
+          userMap[userId] = users[userId].name || 'Anonymous';
+        });
+      }
+    } catch (error) {
+      console.error('[ratingController] Error fetching user names in batch for order ratings:', error.message);
+    }
+    
+    // Add user names to ratings map
+    Object.keys(ratingsMap).forEach(productId => {
+      ratingsMap[productId].userName = userMap[ratingsMap[productId].userId] || 'Anonymous';
     });
   }
   
@@ -441,6 +487,60 @@ export async function getOrderRatingsUser(request, env) {
           createdAt: rating.created_at,
           updatedAt: rating.updated_at,
         };
+      });
+    }
+    
+    // Fetch user names for ratings (batch call)
+    if (ratings && ratings.length > 0) {
+      const userIds = [...new Set(ratings.map(r => r.user_id))];
+      const userMap = {};
+      
+      // Fetch user names from auth worker in a single batch call
+      try {
+        let usersResponse;
+        if (env.auth_worker) {
+          // Use service binding
+          const batchRequest = new Request(`https://workers.dev/users/batch?userIds=${userIds.join(',')}`, {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+          });
+          usersResponse = await env.auth_worker.fetch(batchRequest);
+        } else {
+          // Fallback to HTTP
+          const authUrl = env.AUTH_WORKER_URL || 'https://auth-worker.shyaamdps.workers.dev';
+          usersResponse = await fetch(`${authUrl}/users/batch?userIds=${userIds.join(',')}`, {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+          });
+        }
+        
+        if (usersResponse.ok) {
+          const batchResult = await usersResponse.json();
+          const users = batchResult.users || {};
+          
+          // Build user map from batch response (include name and profileImage)
+          Object.keys(users).forEach(userId => {
+            userMap[userId] = {
+              name: users[userId].name || 'Anonymous',
+              profileImage: users[userId].profileImage || null,
+            };
+          });
+        }
+      } catch (error) {
+        console.error('[ratingController] Error fetching user names in batch for order ratings:', error.message);
+      }
+      
+      // Add user names and profile images to ratings map
+      Object.keys(ratingsMap).forEach(productId => {
+        const userInfo = userMap[ratingsMap[productId].userId];
+        ratingsMap[productId].userName = userInfo?.name || 'Anonymous';
+        ratingsMap[productId].userProfileImage = userInfo?.profileImage || null;
       });
     }
     

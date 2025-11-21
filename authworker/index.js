@@ -71,6 +71,7 @@ router.delete('/profile/addresses/:addressId', async (request, env) => {
 // Inter-worker routes (private)
 router.get('/session/:sessionId', authController.validateWorkerRequest, authController.getSession);
 router.get('/user/:userId', authController.validateWorkerRequest, profileController.getUserById);
+router.get('/users/batch', authController.validateWorkerRequest, profileController.getUsersBatch);
 
 // Health check
 router.get('/health', authController.healthCheck);

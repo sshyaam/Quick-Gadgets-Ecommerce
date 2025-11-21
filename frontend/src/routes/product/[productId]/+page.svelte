@@ -201,6 +201,19 @@
 		currentImageIndex = index;
 	}
 
+	// Format date to dd/mm/yyyy
+	function formatDate(dateString) {
+		if (!dateString) return '';
+		const date = new Date(dateString);
+		if (isNaN(date.getTime())) return dateString;
+		
+		const day = String(date.getDate()).padStart(2, '0');
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const year = date.getFullYear();
+		
+		return `${day}/${month}/${year}`;
+	}
+
 	async function loadRatings() {
 		if (!product?.productId) return;
 		try {
@@ -208,6 +221,14 @@
 			// Rating API returns {ratings: [], average: 0, total: 0, pagination: {}}
 			ratings = result.ratings || [];
 			showRatings = true;
+			
+			// Scroll to ratings section after a brief delay to ensure DOM is updated
+			setTimeout(() => {
+				const ratingsSection = document.getElementById('ratings-section');
+				if (ratingsSection) {
+					ratingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+				}
+			}, 100);
 		} catch (error) {
 			console.error('Error loading ratings:', error);
 			errorMessage = `Error loading ratings: ${error.message}`;
@@ -539,7 +560,7 @@
 
 			<!-- Ratings Section -->
 			{#if showRatings}
-				<div class="mt-8 border-t pt-8">
+				<div id="ratings-section" class="mt-8 border-t pt-8">
 					<h2 class="text-2xl font-bold mb-4">Product Ratings</h2>
 					{#if ratings.length === 0}
 						<p class="text-gray-600">No ratings yet. Be the first to rate this product!</p>
@@ -547,27 +568,52 @@
 						<div class="space-y-4">
 							{#each ratings as rating}
 								<div class="border-b pb-4">
-									<div class="flex items-start justify-between mb-2">
+									<div class="flex items-start gap-3">
+										<!-- User Profile Photo -->
+										<div class="flex-shrink-0">
+											{#if rating.userProfileImage}
+												<img 
+													src={rating.userProfileImage} 
+													alt={rating.userName || 'User'} 
+													class="w-10 h-10 rounded-full object-cover border border-gray-300"
+													on:error={(e) => { 
+														e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"%3E%3Ccircle cx="20" cy="20" r="20" fill="%23e5e7eb"/%3E%3Ctext x="20" y="25" font-size="20" text-anchor="middle" fill="%239ca3af"%3E' + (rating.userName?.[0]?.toUpperCase() || '?') + '%3C/text%3E%3C/svg%3E';
+													}}
+												/>
+											{:else}
+												<div class="w-10 h-10 rounded-full bg-gray-200 border border-gray-300 flex items-center justify-center">
+													<span class="text-gray-500 text-sm font-semibold">
+														{rating.userName?.[0]?.toUpperCase() || '?'}
+													</span>
+												</div>
+											{/if}
+										</div>
+										
+										<!-- Rating Content -->
 										<div class="flex-1">
-											<div class="flex items-center gap-2 mb-1">
-												<span class="font-semibold text-gray-800">
-													{rating.userName || 'Anonymous'}
-												</span>
-												<span class="text-yellow-500 text-sm">
-													{'★'.repeat(rating.rating)}{'☆'.repeat(5 - rating.rating)} {rating.rating}/5
-												</span>
+											<div class="flex items-start justify-between mb-2">
+												<div class="flex-1">
+													<div class="flex items-center gap-2 mb-1">
+														<span class="font-semibold text-gray-800">
+															{rating.userName || 'Anonymous'}
+														</span>
+														<span class="text-yellow-500 text-sm">
+															{'★'.repeat(rating.rating)}{'☆'.repeat(5 - rating.rating)} {rating.rating}/5
+														</span>
+													</div>
+													<span class="text-gray-500 text-xs">
+														{formatDate(rating.created_at || rating.createdAt)}
+													</span>
+												</div>
 											</div>
-											<span class="text-gray-500 text-xs">
-												{new Date(rating.created_at || rating.createdAt).toLocaleDateString()}
-											</span>
+											{#if rating.title}
+												<p class="font-semibold text-gray-800 mt-2 mb-1">{rating.title}</p>
+											{/if}
+											{#if rating.comment}
+												<p class="text-gray-700 mt-1">{rating.comment}</p>
+											{/if}
 										</div>
 									</div>
-									{#if rating.title}
-										<p class="font-semibold text-gray-800 mt-2 mb-1">{rating.title}</p>
-									{/if}
-									{#if rating.comment}
-										<p class="text-gray-700 mt-1">{rating.comment}</p>
-									{/if}
 								</div>
 							{/each}
 						</div>

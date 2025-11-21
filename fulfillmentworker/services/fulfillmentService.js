@@ -350,7 +350,7 @@ export async function getShippingOptions(productId, category, db, userAddress = 
   
   // Cache the result (2 minute TTL - short TTL as requested)
   if (cacheKey) {
-    await setShippingCache(cache, cacheKey, options, 120); // 2 minutes
+    await setShippingCache(cache, cacheKey, options, 300); // 2 minutes
   }
   
   return options;
@@ -423,7 +423,7 @@ export async function calculateBatchShipping(params, db, cache = null) {
         
         // Cache the full options (2 minute TTL - short TTL as requested)
         if (cacheKey) {
-          await setShippingCache(cache, cacheKey, fullOptions, 120); // 2 minutes
+          await setShippingCache(cache, cacheKey, fullOptions, 300); // 2 minutes
         }
         
         // Extract standard and express for batch response

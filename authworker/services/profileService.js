@@ -3,7 +3,7 @@
  * Handles user profile operations
  */
 
-import { getUserById, updateUser } from '../models/userModel.js';
+import { getUserById, getUsersByIds, updateUser } from '../models/userModel.js';
 import { encrypt, decrypt } from '../../shared/utils/encryption.js';
 import { NotFoundError } from '../../shared/utils/errors.js';
 
@@ -288,5 +288,43 @@ export async function updatePassword(userId, newPassword, db, encryptionKey) {
   }
 
   return true;
+}
+
+/**
+ * Get multiple user profiles by IDs (batch)
+ * @param {string[]} userIds - Array of user IDs
+ * @param {D1Database} db - Database instance
+ * @param {string} encryptionKey - Encryption key
+ * @returns {Promise<Object[]>} Array of user profiles (decrypted, without passwords)
+ */
+export async function getProfilesBatch(userIds, db, encryptionKey) {
+  if (!userIds || userIds.length === 0) {
+    return [];
+  }
+
+  const users = await getUsersByIds(db, userIds);
+  
+  const profiles = [];
+  for (const user of users) {
+    try {
+      // Decrypt user data
+      const decryptedData = JSON.parse(decrypt(user.data, encryptionKey));
+
+      // Remove sensitive data before returning
+      const { password, ...profileData } = decryptedData;
+
+      profiles.push({
+        userId: user.user_id,
+        ...profileData,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at,
+      });
+    } catch (error) {
+      // Skip corrupted data - log but continue
+      console.error(`[profile-service] Error decrypting user ${user.user_id}:`, error.message);
+    }
+  }
+
+  return profiles;
 }
 

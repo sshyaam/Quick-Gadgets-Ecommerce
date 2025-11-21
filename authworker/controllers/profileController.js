@@ -183,3 +183,46 @@ export async function getUserById(request, env) {
   );
 }
 
+/**
+ * Get multiple users by IDs (batch, inter-worker)
+ */
+export async function getUsersBatch(request, env) {
+  const url = new URL(request.url);
+  const userIdsParam = url.searchParams.get('userIds');
+  
+  if (!userIdsParam) {
+    return new Response(
+      JSON.stringify({ error: 'userIds query parameter is required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  const userIds = userIdsParam.split(',').filter(id => id.trim());
+  if (userIds.length === 0) {
+    return new Response(
+      JSON.stringify({ error: 'At least one userId is required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  const profiles = await profileService.getProfilesBatch(
+    userIds,
+    env.auth_db,
+    env.ENCRYPTION_KEY
+  );
+  
+  // Convert to map keyed by userId for easy lookup
+  const profilesMap = {};
+  profiles.forEach(profile => {
+    profilesMap[profile.userId] = profile;
+  });
+  
+  return new Response(
+    JSON.stringify({ users: profilesMap }),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
