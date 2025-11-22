@@ -1,0 +1,471 @@
+name: PR Preview Deployment
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: '20'
+  WRANGLER_VERSION: '3.78.0'
+
+jobs:
+  validate-commit-message:
+    name: Validate Commit Message
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR title
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "PR Title: ${PR_TITLE}"
+          
+          # Conventional commit format: type: description or type(scope): description
+          # Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+          if echo "$PR_TITLE" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+            echo "✅ PR title follows conventional commit format"
+            exit 0
+          else
+            echo "❌ PR title does not follow conventional commit format"
+            echo ""
+            echo "Expected format: type: description"
+            echo "or: type(scope): description"
+            echo ""
+            echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+            echo ""
+            echo "Examples:"
+            echo "  ✅ feat: add user authentication"
+            echo "  ✅ fix(api): resolve timeout issue"
+            echo "  ✅ docs: update README"
+            echo "  ❌ Added new feature"
+            echo "  ❌ fix bug"
+            exit 1
+          fi
+
+      - name: Validate commit messages in PR
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          echo "Checking commit messages between ${BASE_SHA} and ${HEAD_SHA}"
+          
+          # Get all commit messages in the PR
+          COMMITS=$(git log --format="%s" ${BASE_SHA}..${HEAD_SHA})
+          
+          if [ -z "$COMMITS" ]; then
+            echo "⚠️  No commits found in PR"
+            exit 0
+          fi
+          
+          INVALID_COMMITS=()
+          while IFS= read -r COMMIT_MSG; do
+            if [ -n "$COMMIT_MSG" ]; then
+              echo "Checking: ${COMMIT_MSG}"
+              if ! echo "$COMMIT_MSG" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+                INVALID_COMMITS+=("$COMMIT_MSG")
+              fi
+            fi
+          done <<< "$COMMITS"
+          
+          if [ ${#INVALID_COMMITS[@]} -gt 0 ]; then
+            echo "❌ Found ${#INVALID_COMMITS[@]} commit(s) that don't follow conventional commit format:"
+            for commit in "${INVALID_COMMITS[@]}"; do
+              echo "  - ${commit}"
+            done
+            echo ""
+            echo "Expected format: type: description"
+            echo "or: type(scope): description"
+            echo ""
+            echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+            exit 1
+          else
+            echo "✅ All commit messages follow conventional commit format"
+          fi
+
+  detect-changed-workers:
+    name: Detect Changed Workers
+    runs-on: ubuntu-latest
+    needs: validate-commit-message
+    outputs:
+      workers: ${{ steps.detect.outputs.workers }}
+      has-changes: ${{ steps.detect.outputs.has-changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed workers
+        id: detect
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          echo "Comparing ${BASE_SHA}..${HEAD_SHA}"
+          
+          # Get all changed files
+          CHANGED_FILES=$(git diff --name-only ${BASE_SHA}..${HEAD_SHA} || echo "")
+          
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changed files detected"
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "workers=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          echo ""
+          
+          # Workers that need deployment
+          WORKERS_TO_DEPLOY=()
+          
+          # Check each worker directory
+          if echo "$CHANGED_FILES" | grep -q "^authworker/"; then
+            WORKERS_TO_DEPLOY+=("authworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^catalogworker/"; then
+            WORKERS_TO_DEPLOY+=("catalogworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^pricingworker/"; then
+            WORKERS_TO_DEPLOY+=("pricingworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^fulfillmentworker/"; then
+            WORKERS_TO_DEPLOY+=("fulfillmentworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^cartworker/"; then
+            WORKERS_TO_DEPLOY+=("cartworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^paymentworker/"; then
+            WORKERS_TO_DEPLOY+=("paymentworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^ordersworker/"; then
+            WORKERS_TO_DEPLOY+=("ordersworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^ratingworker/"; then
+            WORKERS_TO_DEPLOY+=("ratingworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^realtimeworker/"; then
+            WORKERS_TO_DEPLOY+=("realtimeworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^logworker/"; then
+            WORKERS_TO_DEPLOY+=("logworker")
+          fi
+          if echo "$CHANGED_FILES" | grep -q "^healthcheckworker/"; then
+            WORKERS_TO_DEPLOY+=("healthcheckworker")
+          fi
+          
+          # Check for shared code changes - affects all workers
+          if echo "$CHANGED_FILES" | grep -q "^shared/"; then
+            echo "⚠️  Shared code changed - will deploy all workers"
+            WORKERS_TO_DEPLOY=(
+              "authworker"
+              "catalogworker"
+              "pricingworker"
+              "fulfillmentworker"
+              "cartworker"
+              "paymentworker"
+              "ordersworker"
+              "ratingworker"
+              "realtimeworker"
+              "logworker"
+              "healthcheckworker"
+            )
+          fi
+          
+          # Check for package.json or package-lock.json changes - affects all workers
+          if echo "$CHANGED_FILES" | grep -qE "^(package\.json|package-lock\.json)$"; then
+            echo "⚠️  Package files changed - will deploy all workers"
+            WORKERS_TO_DEPLOY=(
+              "authworker"
+              "catalogworker"
+              "pricingworker"
+              "fulfillmentworker"
+              "cartworker"
+              "paymentworker"
+              "ordersworker"
+              "ratingworker"
+              "realtimeworker"
+              "logworker"
+              "healthcheckworker"
+            )
+          fi
+          
+          # Check for wrangler config changes - deploy affected worker
+          for config in wrangler.*.toml; do
+            if echo "$CHANGED_FILES" | grep -q "^${config}$"; then
+              WORKER_NAME=$(echo "$config" | sed 's/wrangler\.\(.*\)\.toml/\1/')
+              if [[ ! " ${WORKERS_TO_DEPLOY[@]} " =~ " ${WORKER_NAME} " ]]; then
+                WORKERS_TO_DEPLOY+=("$WORKER_NAME")
+              fi
+            fi
+          done
+          
+          # Remove duplicates and sort
+          UNIQUE_WORKERS=($(printf '%s\n' "${WORKERS_TO_DEPLOY[@]}" | sort -u))
+          
+          if [ ${#UNIQUE_WORKERS[@]} -eq 0 ]; then
+            echo "No workers need deployment"
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "workers=" >> $GITHUB_OUTPUT
+          else
+            echo "Workers to deploy: ${UNIQUE_WORKERS[*]}"
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            WORKERS_JSON=$(printf '%s\n' "${UNIQUE_WORKERS[@]}" | jq -R . | jq -s .)
+            echo "workers=${WORKERS_JSON}" >> $GITHUB_OUTPUT
+          fi
+
+  store-current-deployments:
+    name: Store Current Deployment IDs
+    runs-on: ubuntu-latest
+    needs: detect-changed-workers
+    if: needs.detect-changed-workers.outputs.has-changes == 'true'
+    outputs:
+      deployment-ids: ${{ steps.store.outputs.ids }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Wrangler
+        run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
+
+      - name: Authenticate with Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Get changed workers list
+        id: workers-list
+        run: |
+          WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
+          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
+          echo "Workers to process:"
+          cat workers-list.txt
+
+      - name: Get current deployment IDs
+        id: store
+        run: |
+          DEPLOYMENT_IDS=""
+          
+          while IFS= read -r worker; do
+            CONFIG_FILE="wrangler.${worker}.toml"
+            if [ -f "$CONFIG_FILE" ]; then
+              echo "Getting deployment ID for ${worker}..."
+              # Get the latest deployment ID (skip the first one if it's the current deployment)
+              DEPLOYMENT_JSON=$(wrangler deployments list --config "$CONFIG_FILE" --format json 2>/dev/null || echo "[]")
+              DEPLOYMENT_ID=$(echo "$DEPLOYMENT_JSON" | jq -r 'if length > 1 then .[1].id // .[0].id else .[0].id // empty end' 2>/dev/null || echo "")
+              
+              if [ -n "$DEPLOYMENT_ID" ] && [ "$DEPLOYMENT_ID" != "null" ]; then
+                echo "${worker}_deployment_id=${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT
+                DEPLOYMENT_IDS="${DEPLOYMENT_IDS}${worker}:${DEPLOYMENT_ID};"
+                echo "Stored deployment ID for ${worker}: ${DEPLOYMENT_ID}"
+              else
+                echo "Warning: Could not get deployment ID for ${worker}"
+                echo "${worker}_deployment_id=" >> $GITHUB_OUTPUT
+              fi
+            fi
+          done < workers-list.txt
+          
+          # Store all IDs as a single output
+          echo "ids=${DEPLOYMENT_IDS}" >> $GITHUB_OUTPUT
+          
+          # Also save to file for later retrieval
+          echo "$DEPLOYMENT_IDS" > deployment-ids.txt
+
+      - name: Upload deployment IDs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-ids
+          path: deployment-ids.txt
+          retention-days: 1
+
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    needs: [validate-commit-message, detect-changed-workers]
+    if: needs.detect-changed-workers.outputs.has-changes == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter (if available)
+        continue-on-error: true
+        run: |
+          if npm run lint 2>/dev/null; then
+            echo "Lint passed"
+          else
+            echo "No lint script found or lint failed, continuing..."
+          fi
+
+      - name: Run tests
+        run: npm test
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            coverage/
+            test-results.xml
+          retention-days: 7
+
+  deploy-preview:
+    name: Deploy to Preview
+    runs-on: ubuntu-latest
+    needs: [detect-changed-workers, store-current-deployments, lint-and-test]
+    if: success() && needs.detect-changed-workers.outputs.has-changes == 'true'
+    environment:
+      name: preview
+      url: https://preview-deployment
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Wrangler
+        run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
+
+      - name: Authenticate with Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Get changed workers list
+        run: |
+          WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
+          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
+          echo "Deploying workers:"
+          cat workers-list.txt
+
+      - name: Deploy to preview
+        run: |
+          FAILED_WORKERS=()
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          PR_SHA="${{ github.event.pull_request.head.sha }}"
+          
+          while IFS= read -r worker; do
+            CONFIG_FILE="wrangler.${worker}.toml"
+            if [ -f "$CONFIG_FILE" ]; then
+              echo "Deploying ${worker} to preview (PR #${PR_NUMBER})..."
+              # Deploy with PR number in message for tracking
+              if wrangler deploy --config "$CONFIG_FILE" --message "Preview deployment for PR #${PR_NUMBER} (${PR_SHA:0:7})" 2>&1; then
+                echo "✅ Successfully deployed ${worker} to preview"
+              else
+                echo "❌ Failed to deploy ${worker} to preview"
+                FAILED_WORKERS+=("$worker")
+              fi
+            fi
+          done < workers-list.txt
+          
+          if [ ${#FAILED_WORKERS[@]} -gt 0 ]; then
+            echo "Some workers failed to deploy: ${FAILED_WORKERS[*]}"
+            exit 1
+          fi
+
+  rollback-on-failure:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [detect-changed-workers, store-current-deployments, lint-and-test, deploy-preview]
+    if: failure() && needs.detect-changed-workers.outputs.has-changes == 'true' && needs.lint-and-test.result == 'failure'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Wrangler
+        run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
+
+      - name: Authenticate with Cloudflare
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Download stored deployment IDs
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-ids
+          path: ./
+
+      - name: Get changed workers list
+        run: |
+          WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
+          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
+
+      - name: Rollback deployments
+        run: |
+          # Get stored deployment IDs from artifact or job output
+          if [ -f "deployment-ids.txt" ]; then
+            DEPLOYMENT_IDS=$(cat deployment-ids.txt)
+          else
+            DEPLOYMENT_IDS="${{ needs.store-current-deployments.outputs.deployment-ids }}"
+          fi
+          
+          echo "⚠️  Rolling back to previous deployments due to test failure..."
+          echo "Stored deployment IDs: ${DEPLOYMENT_IDS}"
+          
+          while IFS= read -r worker; do
+            CONFIG_FILE="wrangler.${worker}.toml"
+            if [ -f "$CONFIG_FILE" ]; then
+              # Extract deployment ID for this worker using sed (more portable than grep -P)
+              DEPLOYMENT_ID=$(echo "$DEPLOYMENT_IDS" | sed -n "s/.*${worker}:\([^;]*\);.*/\1/p" | head -1)
+              
+              if [ -n "$DEPLOYMENT_ID" ]; then
+                echo "Rolling back ${worker} to deployment ${DEPLOYMENT_ID}..."
+                # Use wrangler rollback with specific deployment ID if supported
+                if wrangler rollback --config "$CONFIG_FILE" --message "Rollback after failed PR tests" 2>&1; then
+                  echo "✅ Successfully rolled back ${worker}"
+                else
+                  echo "⚠️  Could not rollback ${worker} (may not have previous deployment)"
+                fi
+              else
+                echo "⚠️  No stored deployment ID for ${worker}, attempting automatic rollback..."
+                if wrangler rollback --config "$CONFIG_FILE" 2>&1; then
+                  echo "✅ Successfully rolled back ${worker} (automatic)"
+                else
+                  echo "⚠️  Could not rollback ${worker} automatically"
+                fi
+              fi
+            fi
+          done < workers-list.txt
+

@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">87.85% </span>
+                <span class="strong">85.83% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>311/354</span>
+                <span class='fraction'>315/367</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">69.76% </span>
+                <span class="strong">68.18% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>30/43</span>
+                <span class='fraction'>30/44</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">87.85% </span>
+                <span class="strong">85.83% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>311/354</span>
+                <span class='fraction'>315/367</span>
             </div>
         
             
@@ -418,7 +418,20 @@
 <a name='L353'></a><a href='#L353'>353</a>
 <a name='L354'></a><a href='#L354'>354</a>
 <a name='L355'></a><a href='#L355'>355</a>
-<a name='L356'></a><a href='#L356'>356</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a>
+<a name='L367'></a><a href='#L367'>367</a>
+<a name='L368'></a><a href='#L368'>368</a>
+<a name='L369'></a><a href='#L369'>369</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -526,7 +539,20 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -873,10 +899,23 @@ export async function signup(userData, db, encryptionKey, logWorkerBindingOrUrl,
     email: normalizedEmail,
     name: userData.name,
     contactNumber: userData.contactNumber || null,
-    address: userData.address || null,
+    address: userData.address || null, // Keep for backward compatibility
     password: hashedPassword, // Store hashed password in encrypted data
     isAdmin: userData.isAdmin === true, // Store admin flag
+    savedAddresses: [], // Initialize saved addresses array
   };
+&nbsp;
+  // If address is provided during signup, add it to savedAddresses
+  if (userData.address) <span class="branch-0 cbranch-no" title="branch not covered" >{</span>
+<span class="cstat-no" title="statement not covered" >    // Generate UUID using Web Crypto API (available in Cloudflare Workers)</span>
+<span class="cstat-no" title="statement not covered" >    const addressId = crypto.randomUUID();</span>
+<span class="cstat-no" title="statement not covered" >    const savedAddress = {</span>
+<span class="cstat-no" title="statement not covered" >      addressId,</span>
+<span class="cstat-no" title="statement not covered" >      ...userData.address,</span>
+<span class="cstat-no" title="statement not covered" >      createdAt: new Date().toISOString(),</span>
+<span class="cstat-no" title="statement not covered" >    };</span>
+<span class="cstat-no" title="statement not covered" >    piiData.savedAddresses.push(savedAddress);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
 &nbsp;
   const encryptedData = encrypt(JSON.stringify(piiData), encryptionKey);
 &nbsp;
@@ -1135,7 +1174,7 @@ export async function authenticate(accessToken, db, encryptionKey) {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T03:54:07.579Z
+                at 2025-11-22T18:29:01.092Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

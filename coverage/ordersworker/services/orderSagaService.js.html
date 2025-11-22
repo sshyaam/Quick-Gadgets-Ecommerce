@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.89% </span>
+                <span class="strong">5.76% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>45/764</span>
+                <span class='fraction'>45/780</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">5.89% </span>
+                <span class="strong">5.76% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>45/764</span>
+                <span class='fraction'>45/780</span>
             </div>
         
             
@@ -828,7 +828,23 @@
 <a name='L763'></a><a href='#L763'>763</a>
 <a name='L764'></a><a href='#L764'>764</a>
 <a name='L765'></a><a href='#L765'>765</a>
-<a name='L766'></a><a href='#L766'>766</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L766'></a><a href='#L766'>766</a>
+<a name='L767'></a><a href='#L767'>767</a>
+<a name='L768'></a><a href='#L768'>768</a>
+<a name='L769'></a><a href='#L769'>769</a>
+<a name='L770'></a><a href='#L770'>770</a>
+<a name='L771'></a><a href='#L771'>771</a>
+<a name='L772'></a><a href='#L772'>772</a>
+<a name='L773'></a><a href='#L773'>773</a>
+<a name='L774'></a><a href='#L774'>774</a>
+<a name='L775'></a><a href='#L775'>775</a>
+<a name='L776'></a><a href='#L776'>776</a>
+<a name='L777'></a><a href='#L777'>777</a>
+<a name='L778'></a><a href='#L778'>778</a>
+<a name='L779'></a><a href='#L779'>779</a>
+<a name='L780'></a><a href='#L780'>780</a>
+<a name='L781'></a><a href='#L781'>781</a>
+<a name='L782'></a><a href='#L782'>782</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -865,6 +881,22 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1918,20 +1950,36 @@ export <span class="fstat-no" title="function not covered" >async function creat
 <span class="cstat-no" title="statement not covered" >    </span>
 <span class="cstat-no" title="statement not covered" >    let order;</span>
 <span class="cstat-no" title="statement not covered" >    try {</span>
+<span class="cstat-no" title="statement not covered" >      // Map items with their individual shipping information</span>
+<span class="cstat-no" title="statement not covered" >      // Delivery date will be calculated when grouping orders (based on order.createdAt)</span>
+<span class="cstat-no" title="statement not covered" >      const itemsWithShipping = cart.items.map((item, index) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        const shippingInfo = shippingCosts[index] || {};</span>
+<span class="cstat-no" title="statement not covered" >        const estimatedDays = shippingInfo.estimatedDays || 5;</span>
+<span class="cstat-no" title="statement not covered" >        </span>
+<span class="cstat-no" title="statement not covered" >        return {</span>
+<span class="cstat-no" title="statement not covered" >          ...item,</span>
+<span class="cstat-no" title="statement not covered" >          shipping: {</span>
+<span class="cstat-no" title="statement not covered" >            cost: shippingInfo.cost || 0,</span>
+<span class="cstat-no" title="statement not covered" >            estimatedDays: estimatedDays,</span>
+<span class="cstat-no" title="statement not covered" >            mode: orderData.itemShippingModes?.[item.productId] || orderData.shippingMode || 'standard',</span>
+<span class="cstat-no" title="statement not covered" >          },</span>
+<span class="cstat-no" title="statement not covered" >        };</span>
+<span class="cstat-no" title="statement not covered" >      });</span>
+<span class="cstat-no" title="statement not covered" >      </span>
 <span class="cstat-no" title="statement not covered" >      // D1 doesn't support traditional transactions, so call createOrder directly</span>
 <span class="cstat-no" title="statement not covered" >      order = await createOrder(env.orders_db, {</span>
 <span class="cstat-no" title="statement not covered" >        userId,</span>
 <span class="cstat-no" title="statement not covered" >        userData: orderData.userData || {},</span>
 <span class="cstat-no" title="statement not covered" >        addressData: orderData.address,</span>
 <span class="cstat-no" title="statement not covered" >        productData: {</span>
-<span class="cstat-no" title="statement not covered" >          items: cart.items,</span>
-<span class="cstat-no" title="statement not covered" >          shipping: shippingCosts,</span>
+<span class="cstat-no" title="statement not covered" >          items: itemsWithShipping,</span>
+<span class="cstat-no" title="statement not covered" >          shipping: shippingCosts, // Keep for backward compatibility</span>
 <span class="cstat-no" title="statement not covered" >        },</span>
 <span class="cstat-no" title="statement not covered" >        shippingData: {</span>
 <span class="cstat-no" title="statement not covered" >          mode: orderData.shippingMode || (orderData.itemShippingModes ? 'mixed' : 'standard'),</span>
 <span class="cstat-no" title="statement not covered" >          itemModes: orderData.itemShippingModes || {}, // Per-item shipping modes</span>
 <span class="cstat-no" title="statement not covered" >          cost: totalShippingCost,</span>
-<span class="cstat-no" title="statement not covered" >          estimatedDelivery: shippingCosts[0]?.estimatedDays || 5,</span>
+<span class="cstat-no" title="statement not covered" >          estimatedDelivery: shippingCosts[0]?.estimatedDays || 5, // Keep for backward compatibility</span>
 <span class="cstat-no" title="statement not covered" >        },</span>
 <span class="cstat-no" title="statement not covered" >        totalAmount,</span>
 <span class="cstat-no" title="statement not covered" >      });</span>
@@ -2365,7 +2413,7 @@ export <span class="fstat-no" title="function not covered" >async function captu
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T03:54:07.579Z
+                at 2025-11-22T18:29:01.092Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

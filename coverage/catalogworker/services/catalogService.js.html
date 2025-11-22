@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">50.84% </span>
+                <span class="strong">53.64% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>150/295</span>
+                <span class='fraction'>162/302</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">45% </span>
+                <span class="strong">50% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>9/20</span>
+                <span class='fraction'>11/22</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">42.85% </span>
+                <span class="strong">55.55% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>3/7</span>
+                <span class='fraction'>5/9</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">50.84% </span>
+                <span class="strong">53.64% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>150/295</span>
+                <span class='fraction'>162/302</span>
             </div>
         
             
@@ -358,7 +358,14 @@
 <a name='L293'></a><a href='#L293'>293</a>
 <a name='L294'></a><a href='#L294'>294</a>
 <a name='L295'></a><a href='#L295'>295</a>
-<a name='L296'></a><a href='#L296'>296</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a>
+<a name='L302'></a><a href='#L302'>302</a>
+<a name='L303'></a><a href='#L303'>303</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -372,6 +379,13 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
@@ -448,6 +462,11 @@
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -519,17 +538,6 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -651,6 +659,12 @@
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
@@ -662,6 +676,7 @@
 import { getProductById, getProducts, searchProducts } from '../models/productModel.js';
 import { NotFoundError } from '../../shared/utils/errors.js';
 import { getWorkerBinding } from '../../shared/utils/interWorker.js';
+import { traceKvOperation } from '../../shared/utils/otel.js';
 &nbsp;
 /**
  * Get product with price and stock from fulfillment worker
@@ -672,11 +687,17 @@ export async function getProductWithDetails(
   kv,
   pricingWorkerBinding,
   fulfillmentWorkerBinding,
-  apiKey
+  apiKey,
+  request = null
 ) {
   // Check KV cache first
   const cacheKey = `product:${productId}`;
-  const cached = await kv.get(cacheKey, { type: 'json' });
+  const cached = await traceKvOperation(
+    'kv.get',
+    async () =&gt; await kv.get(cacheKey, { type: 'json' }),
+    { key: cacheKey, namespace: 'product_cache' },
+    request
+  );
   
   if (cached) {
     // Still fetch price and stock (not cached) - always fetch fresh stock
@@ -739,9 +760,14 @@ export async function getProductWithDetails(
   delete cacheData.stock;
   delete cacheData.price;
   
-  await kv.put(cacheKey, JSON.stringify(cacheData), {
-    expirationTtl: 3600, // 1 hour cache
-  });
+  await traceKvOperation(
+    'kv.put',
+    async () =&gt; await kv.put(cacheKey, JSON.stringify(cacheData), {
+      expirationTtl: 3600, // 1 hour cache
+    }),
+    { key: cacheKey, namespace: 'product_cache', expirationTtl: 3600 },
+    request
+  );
   
   return productResponse;
 }
@@ -760,22 +786,11 @@ export <span class="fstat-no" title="function not covered" >async function getPr
 <span class="cstat-no" title="statement not covered" >  apiKey</span>
 <span class="cstat-no" title="statement not covered" >) {</span>
 <span class="cstat-no" title="statement not covered" >  // Get products from database</span>
-<span class="cstat-no" title="statement not covered" >  // If both search and category are provided, search first then filter by category</span>
+<span class="cstat-no" title="statement not covered" >  // If both search and category are provided, search with category filter in SQL</span>
 <span class="cstat-no" title="statement not covered" >  let result;</span>
 <span class="cstat-no" title="statement not covered" >  if (search) {</span>
-<span class="cstat-no" title="statement not covered" >    result = await searchProducts(db, search, page, limit);</span>
-<span class="cstat-no" title="statement not covered" >    // Filter by category if provided</span>
-<span class="cstat-no" title="statement not covered" >    if (category &amp;&amp; result.products) {</span>
-<span class="cstat-no" title="statement not covered" >      result.products = result.products.filter(product =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >        const productData = typeof product.data === 'string' </span>
-<span class="cstat-no" title="statement not covered" >          ? JSON.parse(product.data) </span>
-<span class="cstat-no" title="statement not covered" >          : product.data;</span>
-<span class="cstat-no" title="statement not covered" >        return productData.category === category;</span>
-<span class="cstat-no" title="statement not covered" >      });</span>
-<span class="cstat-no" title="statement not covered" >      // Recalculate pagination</span>
-<span class="cstat-no" title="statement not covered" >      result.pagination.total = result.products.length;</span>
-<span class="cstat-no" title="statement not covered" >      result.pagination.totalPages = Math.ceil(result.pagination.total / limit);</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    // Pass category to searchProducts so it can filter in SQL (not after pagination)</span>
+<span class="cstat-no" title="statement not covered" >    result = await searchProducts(db, search, page, limit, category);</span>
 <span class="cstat-no" title="statement not covered" >  } else {</span>
 <span class="cstat-no" title="statement not covered" >    result = await getProducts(db, page, limit, category);</span>
 <span class="cstat-no" title="statement not covered" >  }</span>
@@ -945,8 +960,14 @@ async function getStockFromWorker(productId, fulfillmentWorkerBinding, apiKey) {
 /**
  * Invalidate product cache
  */
-export <span class="fstat-no" title="function not covered" >async function invalidateProductCache(productId, kv) {</span>
-<span class="cstat-no" title="statement not covered" >  await kv.delete(`product:${productId}`);</span>
+export <span class="fstat-no" title="function not covered" >async function invalidateProductCache(productId, kv, request = null) {</span>
+<span class="cstat-no" title="statement not covered" >  const cacheKey = `product:${productId}`;</span>
+<span class="cstat-no" title="statement not covered" >  await traceKvOperation(</span>
+<span class="cstat-no" title="statement not covered" >    'kv.delete',</span>
+<span class="cstat-no" title="statement not covered" >    async () =&gt; await kv.delete(cacheKey),</span>
+<span class="cstat-no" title="statement not covered" >    { key: cacheKey, namespace: 'product_cache' },</span>
+<span class="cstat-no" title="statement not covered" >    request</span>
+<span class="cstat-no" title="statement not covered" >  );</span>
 <span class="cstat-no" title="statement not covered" >}</span>
 &nbsp;</pre></td></tr></table></pre>
 
@@ -955,7 +976,7 @@ export <span class="fstat-no" title="function not covered" >async function inval
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T03:54:07.579Z
+                at 2025-11-22T18:29:01.092Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
