@@ -1,7 +1,6 @@
 name = "fulfillment-worker"
 main = "fulfillmentworker/index.js"
 compatibility_date = "2024-09-23"
-node_compat = true
 compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
