@@ -3,6 +3,8 @@
  * Hybrid Session ID + JWT approach
  */
 
+// Test change in auth worker
+
 /**
  * Create session
  * @param {D1Database} db - Database instance
