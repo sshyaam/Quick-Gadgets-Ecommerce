@@ -18,33 +18,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate PR title
-        run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          echo "PR Title: ${PR_TITLE}"
-          
-          # Conventional commit format: type: description or type(scope): description
-          # Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
-          if echo "$PR_TITLE" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
-            echo "✅ PR title follows conventional commit format"
-            exit 0
-          else
-            echo "❌ PR title does not follow conventional commit format"
-            echo ""
-            echo "Expected format: type: description"
-            echo "or: type(scope): description"
-            echo ""
-            echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
-            echo ""
-            echo "Examples:"
-            echo "  ✅ feat: add user authentication"
-            echo "  ✅ fix(api): resolve timeout issue"
-            echo "  ✅ docs: update README"
-            echo "  ❌ Added new feature"
-            echo "  ❌ fix bug"
-            exit 1
-          fi
-
       - name: Validate commit messages in PR
         run: |
           BASE_SHA="${{ github.event.pull_request.base.sha }}"

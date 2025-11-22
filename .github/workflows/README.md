@@ -91,7 +91,7 @@ Before using these workflows, you need to configure the following secrets in you
 - When a pull request is reopened
 
 **Flow:**
-1. **Validate Commit Message**: Validates PR title and all commit messages follow conventional commit format
+1. **Validate Commit Message**: Validates all commit messages in the PR follow conventional commit format
 2. **Detect Changed Workers**: Analyzes changed files and determines which workers need deployment
 3. **Store Current Deployments**: Captures the current active deployment IDs for affected workers only
 4. **Lint and Test**: Runs linter (if available) and all unit tests
