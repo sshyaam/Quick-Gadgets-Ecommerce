@@ -1,5 +1,6 @@
 <script>
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { authApi } from '$lib/api';
 	import { user } from '$lib/stores';
 
@@ -7,6 +8,9 @@
 	let password = '';
 	let loading = false;
 	let error = '';
+
+	// Get return URL from query parameters
+	$: returnTo = $page.url.searchParams.get('returnTo') || '/';
 
 	async function handleLogin() {
 		if (!email || !password) {
@@ -44,8 +48,10 @@
 				user.set({ userId: result.userId, email });
 			}
 			
-			// Reload the page to ensure state is properly set
-			window.location.href = '/';
+			// Redirect to return URL (or home page if not specified)
+			// Decode the return URL in case it was encoded
+			const redirectUrl = decodeURIComponent(returnTo);
+			window.location.href = redirectUrl;
 		} catch (err) {
 			console.error('Login error:', err);
 			error = err.message || 'Login failed. Please check your credentials.';

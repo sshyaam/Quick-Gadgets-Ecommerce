@@ -42,7 +42,8 @@
 		try {
 			profile = await authApi.getProfile();
 			if (!profile) {
-				goto('/login');
+				const { redirectToLogin } = await import('$lib/auth.js');
+				redirectToLogin();
 				return;
 			}
 			// Initialize savedAddresses if it doesn't exist

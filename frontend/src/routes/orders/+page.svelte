@@ -5,6 +5,7 @@
 	import { user } from '$lib/stores';
 	import { ordersApi } from '$lib/api';
 	import Pagination from '$lib/components/Pagination.svelte';
+	import { redirectToLogin } from '$lib/auth.js';
 
 	export let data;
 
@@ -276,7 +277,7 @@
 		<div class="text-center py-12">
 			<p class="text-gray-600 text-lg mb-4">Please log in to view your orders.</p>
 			<button
-				on:click={() => goto('/login')}
+				on:click={() => redirectToLogin()}
 				class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded"
 			>
 				Login

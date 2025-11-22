@@ -94,10 +94,13 @@ export async function apiRequest(url, options = {}, cookies = null) {
 			// Check if response is ok
 			if (!response.ok) {
 				let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+				let errorCode = null;
 				try {
 					const errorData = await response.json();
 					// If error has details, include them in the message
 					if (errorData.error) {
+						// Extract error code if present
+						errorCode = errorData.error.code || null;
 						if (errorData.error.details && Array.isArray(errorData.error.details)) {
 							errorMessage = JSON.stringify(errorData.error);
 						} else {
@@ -105,13 +108,18 @@ export async function apiRequest(url, options = {}, cookies = null) {
 						}
 					} else {
 						errorMessage = errorData.message || errorMessage;
+						errorCode = errorData.code || null;
 					}
 				} catch (e) {
 					// If response is not JSON, use status text
 					const text = await response.text().catch(() => '');
 					if (text) errorMessage = text;
 				}
-				throw new Error(errorMessage);
+				const error = new Error(errorMessage);
+				// Attach error code and status for better error handling
+				if (errorCode) error.code = errorCode;
+				error.status = response.status;
+				throw error;
 			}
 
 		// Handle response body

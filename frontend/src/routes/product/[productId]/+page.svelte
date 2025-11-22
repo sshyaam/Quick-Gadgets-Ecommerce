@@ -3,6 +3,7 @@
 	import { cart } from '$lib/stores';
 	import { cartApi, ratingApi, fulfillmentApi } from '$lib/api';
 	import { onMount } from 'svelte';
+	import { redirectToLogin, isAuthenticationError } from '$lib/auth.js';
 
 	export let data;
 
@@ -261,8 +262,8 @@
 			successMessage = 'Item added to cart!';
 			setTimeout(() => successMessage = '', 3000);
 		} catch (error) {
-			if (error.message.includes('401') || error.message.includes('Access token required') || error.message.includes('Unauthorized')) {
-				goto('/login');
+			if (isAuthenticationError(error)) {
+				redirectToLogin();
 			} else {
 				errorMessage = error.message || 'Failed to add item to cart';
 				setTimeout(() => errorMessage = '', 5000);

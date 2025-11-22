@@ -94,29 +94,53 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
   }
   
   // Total stock is sufficient - now find the nearest warehouse for zone/shipping calculation
+  // Priority: Closer warehouses with sufficient stock > Closer warehouses with any stock
   // We don't require this warehouse to have all the stock, since fulfillment can split across warehouses
   
   // First try exact pincode match - find nearest warehouse that serves this pincode
   let warehouses = await getWarehousesByPincode(db, pincode);
   
   if (warehouses.length > 0) {
-    // Check which warehouses have any stock (even if not enough individually)
+    // Two-pass approach: First find warehouses with sufficient stock, then fallback to any stock
+    const warehousesWithSufficientStock = [];
     const warehousesWithAnyStock = [];
+    
     for (const warehouse of warehouses) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
-        warehousesWithAnyStock.push({
-          ...warehouse,
-          availableStock: stock.quantity - stock.reserved_quantity,
-          zone: calculateZone(warehouse.pincode, pincode)
-        });
+      if (stock) {
+        const available = stock.quantity - stock.reserved_quantity;
+        if (available > 0) {
+          const warehouseData = {
+            ...warehouse,
+            availableStock: available,
+            zone: calculateZone(warehouse.pincode, pincode)
+          };
+          
+          if (available >= requiredQuantity) {
+            warehousesWithSufficientStock.push(warehouseData);
+          } else {
+            warehousesWithAnyStock.push(warehouseData);
+          }
+        }
       }
     }
     
-    // If we found warehouses with stock, return the one with most stock (or first one)
+    // Priority 1: If we found warehouses with sufficient stock, pick the closest one
+    if (warehousesWithSufficientStock.length > 0) {
+      // Sort by zone (1 < 2 < 3), then by available stock (descending)
+      warehousesWithSufficientStock.sort((a, b) => {
+        if (a.zone !== b.zone) return a.zone - b.zone;
+        return b.availableStock - a.availableStock;
+      });
+      return warehousesWithSufficientStock[0];
+    }
+    
+    // Priority 2: Fallback to warehouses with any stock, still sorted by zone first
     if (warehousesWithAnyStock.length > 0) {
-      // Sort by available stock (descending) to prefer warehouse with most stock
-      warehousesWithAnyStock.sort((a, b) => b.availableStock - a.availableStock);
+      warehousesWithAnyStock.sort((a, b) => {
+        if (a.zone !== b.zone) return a.zone - b.zone;
+        return b.availableStock - a.availableStock;
+      });
       return warehousesWithAnyStock[0];
     }
   }
@@ -133,21 +157,42 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
     .all();
   
   if (stateWarehouses.results && stateWarehouses.results.length > 0) {
-    // Find warehouses with any stock in same state
+    // Two-pass approach: First find warehouses with sufficient stock, then fallback to any stock
+    const warehousesWithSufficientStock = [];
     const warehousesWithAnyStock = [];
+    
     for (const warehouse of stateWarehouses.results) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
-        warehousesWithAnyStock.push({
-          ...warehouse,
-          availableStock: stock.quantity - stock.reserved_quantity,
-          zone: calculateZone(warehouse.pincode, pincode)
-        });
+      if (stock) {
+        const available = stock.quantity - stock.reserved_quantity;
+        if (available > 0) {
+          const warehouseData = {
+            ...warehouse,
+            availableStock: available,
+            zone: calculateZone(warehouse.pincode, pincode)
+          };
+          
+          if (available >= requiredQuantity) {
+            warehousesWithSufficientStock.push(warehouseData);
+          } else {
+            warehousesWithAnyStock.push(warehouseData);
+          }
+        }
       }
     }
     
-    if (warehousesWithAnyStock.length > 0) {
+    // Priority 1: If we found warehouses with sufficient stock, pick the closest one
+    if (warehousesWithSufficientStock.length > 0) {
       // Sort by zone (1 < 2 < 3), then by available stock (descending)
+      warehousesWithSufficientStock.sort((a, b) => {
+        if (a.zone !== b.zone) return a.zone - b.zone;
+        return b.availableStock - a.availableStock;
+      });
+      return warehousesWithSufficientStock[0];
+    }
+    
+    // Priority 2: Fallback to warehouses with any stock, still sorted by zone first
+    if (warehousesWithAnyStock.length > 0) {
       warehousesWithAnyStock.sort((a, b) => {
         if (a.zone !== b.zone) return a.zone - b.zone;
         return b.availableStock - a.availableStock;
@@ -168,21 +213,45 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
     .all();
   
   if (allWarehouses.results && allWarehouses.results.length > 0) {
-    // Find all warehouses with any stock
+    // Two-pass approach: First find warehouses with sufficient stock, then fallback to any stock
+    const warehousesWithSufficientStock = [];
     const warehousesWithAnyStock = [];
+    
     for (const warehouse of allWarehouses.results) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
-        warehousesWithAnyStock.push({
-          ...warehouse,
-          availableStock: stock.quantity - stock.reserved_quantity,
-          zone: calculateZone(warehouse.pincode, pincode)
-        });
+      if (stock) {
+        const available = stock.quantity - stock.reserved_quantity;
+        if (available > 0) {
+          const warehouseData = {
+            ...warehouse,
+            availableStock: available,
+            zone: calculateZone(warehouse.pincode, pincode)
+          };
+          
+          if (available >= requiredQuantity) {
+            warehousesWithSufficientStock.push(warehouseData);
+          } else {
+            warehousesWithAnyStock.push(warehouseData);
+          }
+        }
       }
     }
     
+    // Priority 1: If we found warehouses with sufficient stock, pick the closest one
+    if (warehousesWithSufficientStock.length > 0) {
+      // Sort by zone (1 < 2 < 3), then by same state preference, then by available stock (descending)
+      warehousesWithSufficientStock.sort((a, b) => {
+        if (a.zone !== b.zone) return a.zone - b.zone;
+        // If same zone, prefer same state
+        if (a.state === state && b.state !== state) return -1;
+        if (b.state === state && a.state !== state) return 1;
+        return b.availableStock - a.availableStock;
+      });
+      return warehousesWithSufficientStock[0];
+    }
+    
+    // Priority 2: Fallback to warehouses with any stock, still sorted by zone first
     if (warehousesWithAnyStock.length > 0) {
-      // Sort by zone (1 < 2 < 3), then by available stock (descending)
       warehousesWithAnyStock.sort((a, b) => {
         if (a.zone !== b.zone) return a.zone - b.zone;
         // If same zone, prefer same state

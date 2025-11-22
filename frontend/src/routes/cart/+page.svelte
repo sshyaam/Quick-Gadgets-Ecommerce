@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { cart, user } from '$lib/stores';
 	import { cartApi } from '$lib/api';
+	import { redirectToLogin, isAuthenticationError } from '$lib/auth.js';
 
 	export let data;
 
@@ -65,8 +66,8 @@
 			cart.set(updatedCart);
 			cartData = updatedCart;
 		} catch (error) {
-			if (error.message.includes('401') || error.message.includes('Access token required') || error.message.includes('Unauthorized')) {
-				goto('/login');
+			if (isAuthenticationError(error)) {
+				redirectToLogin();
 			} else {
 				errorMessage = error.message || 'Failed to update item';
 				setTimeout(() => errorMessage = '', 5000);
@@ -85,8 +86,8 @@
 			cart.set(updatedCart);
 			cartData = updatedCart;
 		} catch (error) {
-			if (error.message.includes('401') || error.message.includes('Access token required') || error.message.includes('Unauthorized')) {
-				goto('/login');
+			if (isAuthenticationError(error)) {
+				redirectToLogin();
 			} else {
 				errorMessage = error.message || 'Failed to remove item';
 				setTimeout(() => errorMessage = '', 5000);
@@ -110,8 +111,8 @@
 			cartData = null;
 			showClearConfirm = false;
 		} catch (error) {
-			if (error.message.includes('401') || error.message.includes('Access token required') || error.message.includes('Unauthorized')) {
-				goto('/login');
+			if (isAuthenticationError(error)) {
+				redirectToLogin();
 			} else {
 				errorMessage = error.message || 'Failed to clear cart';
 				setTimeout(() => errorMessage = '', 5000);
@@ -141,7 +142,7 @@
 	<div class="text-center py-12">
 		<p class="text-gray-600 text-lg mb-4">Please log in to view your cart.</p>
 		<button
-			on:click={() => goto('/login')}
+			on:click={() => redirectToLogin()}
 			class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded"
 		>
 			Login
