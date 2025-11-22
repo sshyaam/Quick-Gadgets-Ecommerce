@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Git pre-push hook
+# Additional validation before pushing (backup check)
+# This runs after commit-msg, so it's mainly a safety net
+
+# Get the remote and branch being pushed to
+while read local_ref local_sha remote_ref remote_sha
+do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    # Branch is being deleted, skip validation
+    continue
+  fi
+  
+  # Get commit messages for commits being pushed
+  if [ "$local_sha" != "$remote_sha" ]; then
+    # Get range of commits
+    RANGE="$remote_sha..$local_sha"
+  else
+    # No new commits
+    continue
+  fi
+  
+  # Check each commit message
+  while read commit_hash; do
+    COMMIT_MSG=$(git log --format=%s -n 1 "$commit_hash" 2>/dev/null)
+    
+    if [ -z "$COMMIT_MSG" ]; then
+      continue
+    fi
+    
+    # Validate commit message format
+    if ! echo "$COMMIT_MSG" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+      echo "❌ Invalid commit message format in commit: ${commit_hash:0:7}"
+      echo "   Message: ${COMMIT_MSG}"
+      echo ""
+      echo "Expected format: type: description"
+      echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+      echo ""
+      echo "To fix: Amend the commit message using: git commit --amend"
+      exit 1
+    fi
+  done < <(git rev-list "$RANGE" 2>/dev/null)
+done
+
+exit 0
+

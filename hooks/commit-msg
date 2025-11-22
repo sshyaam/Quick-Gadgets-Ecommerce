@@ -1,0 +1,37 @@
+#!/bin/bash
+
+# Git commit-msg hook
+# Validates commit messages to follow conventional commit format
+# Format: type: description or type(scope): description
+
+COMMIT_MSG_FILE=$1
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Get the first line (subject) of the commit message
+COMMIT_SUBJECT=$(echo "$COMMIT_MSG" | head -n 1)
+
+# Conventional commit format: type: description or type(scope): description
+# Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
+if echo "$COMMIT_SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+  exit 0
+else
+  echo "❌ Commit message does not follow conventional commit format"
+  echo ""
+  echo "Expected format: type: description"
+  echo "or: type(scope): description"
+  echo ""
+  echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+  echo ""
+  echo "Examples:"
+  echo "  ✅ feat: add user authentication"
+  echo "  ✅ fix(api): resolve timeout issue"
+  echo "  ✅ docs: update README"
+  echo "  ❌ Added new feature"
+  echo "  ❌ fix bug"
+  echo ""
+  echo "Your commit message: ${COMMIT_SUBJECT}"
+  echo ""
+  echo "To bypass this check (not recommended), use: git commit --no-verify"
+  exit 1
+fi
+

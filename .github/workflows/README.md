@@ -2,6 +2,66 @@
 
 This directory contains GitHub Actions workflows for continuous integration and deployment of Cloudflare Workers.
 
+## Git Hooks (Client-Side Validation)
+
+Before pushing code, commit messages are validated locally using Git hooks. This prevents invalid commits from being created in the first place.
+
+### Setup Git Hooks
+
+Run the setup script to install the hooks:
+
+```bash
+./scripts/setup-git-hooks.sh
+```
+
+This will install:
+- **commit-msg hook**: Validates commit message format before the commit is finalized
+- **pre-push hook**: Additional validation before pushing (backup check)
+
+### Commit Message Format
+
+All commits must follow the **Conventional Commit** format (same as CI/CD validation):
+
+```
+type: description
+```
+
+or with scope:
+
+```
+type(scope): description
+```
+
+**Allowed Types:**
+- `feat`: A new feature
+- `fix`: A bug fix
+- `docs`: Documentation only changes
+- `style`: Code style changes (formatting, etc.)
+- `refactor`: Code refactoring
+- `test`: Adding or updating tests
+- `chore`: Maintenance tasks
+- `perf`: Performance improvements
+- `ci`: CI/CD changes
+- `build`: Build system changes
+- `revert`: Revert a previous commit
+
+**Examples:**
+- ✅ `feat: add user authentication`
+- ✅ `fix(api): resolve timeout issue`
+- ✅ `docs: update README`
+- ❌ `Added new feature` (missing type)
+- ❌ `fix bug` (missing colon)
+
+### Bypassing Hooks (Not Recommended)
+
+If you absolutely need to bypass the hook (not recommended):
+
+```bash
+git commit --no-verify -m "your message"
+```
+
+**Note:** This will still fail in CI/CD, so it's better to use the correct format.
+
 ## Required Secrets
 
 Before using these workflows, you need to configure the following secrets in your GitHub repository:
