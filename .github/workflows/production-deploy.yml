@@ -201,12 +201,23 @@ jobs:
           if [ ${#UNIQUE_WORKERS[@]} -eq 0 ]; then
             echo "No workers need deployment"
             echo "has-changes=false" >> $GITHUB_OUTPUT
-            echo "workers=" >> $GITHUB_OUTPUT
+            echo "workers=[]" >> $GITHUB_OUTPUT
           else
             echo "Workers to deploy: ${UNIQUE_WORKERS[*]}"
             echo "has-changes=true" >> $GITHUB_OUTPUT
-            WORKERS_JSON=$(printf '%s\n' "${UNIQUE_WORKERS[@]}" | jq -R . | jq -s .)
-            echo "workers=${WORKERS_JSON}" >> $GITHUB_OUTPUT
+            # Create JSON array properly - use compact format
+            WORKERS_JSON=$(printf '%s\n' "${UNIQUE_WORKERS[@]}" | jq -R . | jq -s . | jq -c . 2>/dev/null || echo "[]")
+            if [ "$WORKERS_JSON" = "[]" ] || [ -z "$WORKERS_JSON" ]; then
+              echo "Error: Failed to create workers JSON, defaulting to empty array"
+              echo "workers=[]" >> $GITHUB_OUTPUT
+            else
+              # Use multiline output format for GitHub Actions
+              {
+                echo "workers<<EOF"
+                echo "$WORKERS_JSON"
+                echo "EOF"
+              } >> $GITHUB_OUTPUT
+            fi
           fi
 
   store-production-deployments:
@@ -245,9 +256,14 @@ jobs:
         id: workers-list
         run: |
           WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
-          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
-          echo "Workers to process:"
-          cat workers-list.txt
+          if [ "$WORKERS_JSON" != "[]" ] && [ -n "$WORKERS_JSON" ]; then
+            echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
+            echo "Workers to process:"
+            cat workers-list.txt
+          else
+            echo "No workers to process"
+            touch workers-list.txt
+          fi
 
       - name: Get current production deployment IDs and SHAs
         id: store
