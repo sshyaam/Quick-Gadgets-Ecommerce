@@ -31,7 +31,9 @@ export async function load({ url, fetch }) {
 					page: page,
 					limit: limit,
 					total: 0,
-					totalPages: 0
+					totalPages: 0,
+					hasNext: false,
+					hasPrev: false
 				},
 				category,
 				search,
@@ -41,13 +43,18 @@ export async function load({ url, fetch }) {
 		
 		const data = await response.json();
 		
+		const currentPage = data.pagination?.page || data.page || page;
+		const totalPages = data.pagination?.totalPages || data.totalPages || 1;
+		
 		return {
 			products: data.products || [],
 			pagination: {
-				page: data.pagination?.page || data.page || page,
+				page: currentPage,
 				limit: data.pagination?.limit || data.limit || limit,
 				total: data.pagination?.total || data.total || 0,
-				totalPages: data.pagination?.totalPages || data.totalPages || 1
+				totalPages: totalPages,
+				hasNext: data.pagination?.hasNext ?? (currentPage < totalPages),
+				hasPrev: data.pagination?.hasPrev ?? (currentPage > 1)
 			},
 			category,
 			search
@@ -60,7 +67,9 @@ export async function load({ url, fetch }) {
 				page: page,
 				limit: limit,
 				total: 0,
-				totalPages: 0
+				totalPages: 0,
+				hasNext: false,
+				hasPrev: false
 			},
 			category,
 			search,

@@ -7,8 +7,14 @@
 	export let preserveParams = true; // Preserve existing URL params
 	export let pageParam = 'page'; // Custom page parameter name (for admin tabs)
 
+	// Calculate hasPrev and hasNext if not provided
+	$: currentPage = pagination.page || 1;
+	$: totalPages = pagination.totalPages || 1;
+	$: hasPrev = pagination.hasPrev !== undefined ? pagination.hasPrev : (currentPage > 1);
+	$: hasNext = pagination.hasNext !== undefined ? pagination.hasNext : (currentPage < totalPages);
+
 	function goToPage(pageNum) {
-		if (pageNum < 1 || pageNum > pagination.totalPages) return;
+		if (pageNum < 1 || pageNum > totalPages) return;
 		
 		const params = new URLSearchParams();
 		
@@ -29,8 +35,8 @@
 	}
 
 	function getPageNumbers() {
-		const current = pagination.page || 1;
-		const total = pagination.totalPages || 1;
+		const current = currentPage;
+		const total = totalPages;
 		const pages = [];
 		
 		// Always show first page
@@ -72,9 +78,9 @@
 	<div class="flex items-center justify-center gap-2 mt-6">
 		<!-- Previous Button -->
 		<button
-			on:click={() => goToPage((pagination.page || 1) - 1)}
-			disabled={!pagination.hasPrev}
-			class="px-4 py-2 border rounded-lg {pagination.hasPrev ? 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}"
+			on:click={() => goToPage(currentPage - 1)}
+			disabled={!hasPrev}
+			class="px-4 py-2 border rounded-lg {hasPrev ? 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}"
 		>
 			Previous
 		</button>
@@ -87,7 +93,7 @@
 				{:else}
 					<button
 						on:click={() => goToPage(pageNum)}
-						class="px-4 py-2 border rounded-lg {pageNum === pagination.page ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'}"
+						class="px-4 py-2 border rounded-lg {pageNum === currentPage ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'}"
 					>
 						{pageNum}
 					</button>
@@ -97,9 +103,9 @@
 
 		<!-- Next Button -->
 		<button
-			on:click={() => goToPage((pagination.page || 1) + 1)}
-			disabled={!pagination.hasNext}
-			class="px-4 py-2 border rounded-lg {pagination.hasNext ? 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}"
+			on:click={() => goToPage(currentPage + 1)}
+			disabled={!hasNext}
+			class="px-4 py-2 border rounded-lg {hasNext ? 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}"
 		>
 			Next
 		</button>
@@ -107,7 +113,7 @@
 
 	<!-- Page Info -->
 	<div class="text-center text-sm text-gray-600 mt-2">
-		Showing {((pagination.page || 1) - 1) * (pagination.limit || 10) + 1} to {Math.min((pagination.page || 1) * (pagination.limit || 10), pagination.total || 0)} of {pagination.total || 0} results
+		Showing {((currentPage - 1) * (pagination.limit || 10) + 1)} to {Math.min(currentPage * (pagination.limit || 10), pagination.total || 0)} of {pagination.total || 0} results
 	</div>
 {/if}
 
