@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { cart } from '$lib/stores';
 	import { cartApi, ordersApi, fulfillmentApi, authApi, catalogApi } from '$lib/api';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 
 	let cartData = null;
 	let userProfile = null;
@@ -13,6 +13,12 @@
 	let error = '';
 	let message = '';
 	let saveNewAddress = false;
+	
+	// PayPal payment flow state
+	let showPayPalLoading = false;
+	let paypalWindow = null;
+	let paypalCheckInterval = null;
+	let currentOrderId = null;
 	
 	// Address management
 	let savedAddresses = [];
@@ -91,6 +97,49 @@
 			}
 		} catch (err) {
 			error = 'Failed to load cart. Please try again.';
+		}
+		
+		// Listen for payment completion message from PayPal return page
+		const handleMessage = (event) => {
+			// Only accept messages from same origin
+			if (event.origin !== window.location.origin) return;
+			
+			if (event.data && event.data.type === 'PAYPAL_PAYMENT_COMPLETE') {
+				// Payment completed successfully
+				closePayPalLoading();
+				message = 'Payment successful! Redirecting to orders...';
+				setTimeout(() => {
+					goto('/orders');
+				}, 1500);
+			} else if (event.data && event.data.type === 'PAYPAL_PAYMENT_ERROR') {
+				// Payment failed
+				closePayPalLoading();
+				error = event.data.message || 'Payment processing failed. Please try again.';
+			}
+		};
+		
+		window.addEventListener('message', handleMessage);
+		
+		// Cleanup function
+		return () => {
+			window.removeEventListener('message', handleMessage);
+			if (paypalCheckInterval) {
+				clearInterval(paypalCheckInterval);
+			}
+			if (paypalWindow && !paypalWindow.closed) {
+				paypalWindow.close();
+			}
+		};
+	});
+	
+	onDestroy(() => {
+		// Cleanup intervals and windows
+		if (paypalCheckInterval) {
+			clearInterval(paypalCheckInterval);
+			paypalCheckInterval = null;
+		}
+		if (paypalWindow && !paypalWindow.closed) {
+			paypalWindow.close();
 		}
 	});
 
@@ -303,6 +352,29 @@
 	function calculateTotal() {
 		return totalCost;
 	}
+	
+	function closePayPalLoading() {
+		showPayPalLoading = false;
+		if (paypalCheckInterval) {
+			clearInterval(paypalCheckInterval);
+			paypalCheckInterval = null;
+		}
+		if (paypalWindow && !paypalWindow.closed) {
+			paypalWindow.close();
+		}
+		loading = false;
+	}
+	
+	function cancelPayPalPayment() {
+		closePayPalLoading();
+		error = 'Payment cancelled. You can try again when ready.';
+		// Clear stored order data
+		if (currentOrderId) {
+			localStorage.removeItem('pendingOrderId');
+			localStorage.removeItem('pendingPaypalOrderId');
+			currentOrderId = null;
+		}
+	}
 
 	function selectSavedAddress(addressId) {
 		selectedAddressId = addressId;
@@ -473,18 +545,54 @@
 				// Store order details for PayPal return page
 				localStorage.setItem('pendingOrderId', order.orderId);
 				localStorage.setItem('pendingPaypalOrderId', order.paypalOrderId);
+				currentOrderId = order.orderId;
 				
-				// Redirect to PayPal for approval
-				message = 'Redirecting to PayPal for payment approval...';
-				window.location.href = approvalUrl;
+				// Open PayPal in a new window
+				paypalWindow = window.open(
+					approvalUrl,
+					'paypal_payment',
+					'width=800,height=600,scrollbars=yes,resizable=yes'
+				);
+				
+				if (!paypalWindow) {
+					// Popup blocked - fallback to redirect
+					error = 'Popup blocked. Please allow popups for this site and try again, or we will redirect you to PayPal.';
+					setTimeout(() => {
+						window.location.href = approvalUrl;
+					}, 2000);
+					loading = false;
+					return;
+				}
+				
+				// Show loading overlay
+				showPayPalLoading = true;
+				loading = false; // Don't show button loading, show overlay instead
+				
+				// Check if PayPal window is closed manually
+				paypalCheckInterval = setInterval(() => {
+					if (paypalWindow.closed) {
+						// Window was closed manually
+						clearInterval(paypalCheckInterval);
+						paypalCheckInterval = null;
+						showPayPalLoading = false;
+						error = 'Payment window was closed. If you completed the payment, please check your orders page.';
+						// Clear stored data after a delay
+						setTimeout(() => {
+							localStorage.removeItem('pendingOrderId');
+							localStorage.removeItem('pendingPaypalOrderId');
+							currentOrderId = null;
+						}, 5000);
+					}
+				}, 500); // Check every 500ms
 			} else {
 				error = 'PayPal approval URL not found. Please try again.';
 				console.error('Invalid order response:', order);
+				loading = false;
 			}
 		} catch (err) {
 			error = err.message || 'Checkout failed. Please try again.';
-		} finally {
 			loading = false;
+			showPayPalLoading = false;
 		}
 	}
 </script>
@@ -841,15 +949,35 @@
 
 				<button
 					on:click={handleCheckout}
-					disabled={loading || loadingShipping || !hasAvailableShipping}
+					disabled={loading || loadingShipping || !hasAvailableShipping || showPayPalLoading}
 					class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-3 rounded-lg font-semibold"
 				>
-					{loading ? 'Processing...' : 'Complete Order'}
+					{loading ? 'Processing...' : showPayPalLoading ? 'Payment in Progress...' : 'Checkout with Paypal'}
 				</button>
 
-				<p class="mt-4 text-xs text-gray-600 text-center">
-					Note: PayPal integration pending configuration
-				</p>
+			</div>
+		</div>
+	{/if}
+	
+	<!-- PayPal Loading Overlay -->
+	{#if showPayPalLoading}
+		<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+			<div class="bg-white rounded-lg p-8 max-w-md w-full mx-4 shadow-xl">
+				<div class="flex justify-between items-start mb-4">
+					<h3 class="text-xl font-bold text-gray-800">Processing Payment</h3>
+					<button
+						on:click={cancelPayPalPayment}
+						class="text-gray-500 hover:text-gray-700 text-2xl font-bold leading-none"
+						title="Cancel payment"
+					>
+						×
+					</button>
+				</div>
+				<div class="text-center">
+					<div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+					<p class="text-gray-700 mb-2">Please complete your payment in the PayPal window.</p>
+					<p class="text-sm text-gray-500">Do not close this page until payment is complete.</p>
+				</div>
 			</div>
 		</div>
 	{/if}

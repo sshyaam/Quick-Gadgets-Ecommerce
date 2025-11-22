@@ -60,11 +60,6 @@
 						order.deliveryDate = deliveryDate.toISOString().split('T')[0];
 					}
 					requiresAuth = false;
-					
-					// Load existing ratings if order is completed
-					if (order.status === 'completed') {
-						await loadExistingRatings(order.orderId);
-					}
 				} catch (err) {
 					console.error('Error loading order:', err);
 					error = err.message || 'Failed to load order';
@@ -90,7 +85,7 @@
 			requiresAuth = data.requiresAuth || false;
 		}
 		
-		// Load existing ratings if order is already loaded and completed
+		// Load existing ratings if order is loaded and completed (only once, at the end)
 		if (order && order.status === 'completed' && order.orderId) {
 			await loadExistingRatings(order.orderId);
 		}

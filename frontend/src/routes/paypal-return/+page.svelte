@@ -42,8 +42,22 @@
 					localStorage.removeItem('pendingOrderId');
 					localStorage.removeItem('pendingPaypalOrderId');
 					
+					// Notify parent window (checkout page) if opened in popup
+					if (window.opener) {
+						window.opener.postMessage({
+							type: 'PAYPAL_PAYMENT_COMPLETE',
+							orderId: orderId
+						}, window.location.origin);
+					}
+					
 					setTimeout(() => {
-						goto('/orders');
+						if (window.opener) {
+							// Close this window if opened as popup
+							window.close();
+						} else {
+							// Redirect if opened in same window
+							goto('/orders');
+						}
 					}, 1500);
 				} else {
 					throw new Error('Payment capture failed');
@@ -59,8 +73,22 @@
 					localStorage.removeItem('pendingOrderId');
 					localStorage.removeItem('pendingPaypalOrderId');
 					
+					// Notify parent window (checkout page) if opened in popup
+					if (window.opener) {
+						window.opener.postMessage({
+							type: 'PAYPAL_PAYMENT_COMPLETE',
+							orderId: storedOrderId
+						}, window.location.origin);
+					}
+					
 					setTimeout(() => {
-						goto('/orders');
+						if (window.opener) {
+							// Close this window if opened as popup
+							window.close();
+						} else {
+							// Redirect if opened in same window
+							goto('/orders');
+						}
 					}, 1500);
 				} else {
 					throw new Error('Payment capture failed');
@@ -75,8 +103,22 @@
 			localStorage.removeItem('pendingOrderId');
 			localStorage.removeItem('pendingPaypalOrderId');
 			
+			// Notify parent window (checkout page) if opened in popup
+			if (window.opener) {
+				window.opener.postMessage({
+					type: 'PAYPAL_PAYMENT_ERROR',
+					message: err.message || 'Payment processing failed. Please check your orders page.'
+				}, window.location.origin);
+			}
+			
 			setTimeout(() => {
-				goto('/orders');
+				if (window.opener) {
+					// Close this window if opened as popup
+					window.close();
+				} else {
+					// Redirect if opened in same window
+					goto('/orders');
+				}
 			}, 3000);
 		}
 	});
