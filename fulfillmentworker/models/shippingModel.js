@@ -441,7 +441,7 @@ export async function getShippingOptionsForProduct(db, productId, category, addr
   
   const expressAvailable = coverageResult
     ? (coverageResult.express_available === 1 || coverageResult.express_available === true || coverageResult.express_available === '1' || coverageResult.express_available === 'true')
-    : true; // Default to available if no coverage record exists
+    : false; // Default to not available if no coverage record exists
   
   // Use zone for calculations
   if (!rules) {
