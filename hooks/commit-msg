@@ -5,14 +5,43 @@
 # Format: type: description or type(scope): description
 
 COMMIT_MSG_FILE=$1
-COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Check if commit message file is provided
+if [ -z "$COMMIT_MSG_FILE" ]; then
+  echo "❌ Error: Commit message file not provided"
+  exit 1
+fi
+
+# Read commit message (handle both regular files and special files like /dev/stdin)
+if [ -f "$COMMIT_MSG_FILE" ] || [ -p "$COMMIT_MSG_FILE" ] || [ "$COMMIT_MSG_FILE" = "/dev/stdin" ]; then
+  COMMIT_MSG=$(cat "$COMMIT_MSG_FILE" 2>/dev/null || echo "")
+else
+  echo "❌ Error: Cannot read commit message from: $COMMIT_MSG_FILE"
+  exit 1
+fi
+
+# Check if commit message is empty
+if [ -z "$COMMIT_MSG" ]; then
+  echo "❌ Error: Commit message is empty"
+  echo "Please provide a commit message following the format: type: description"
+  exit 1
+fi
 
 # Get the first line (subject) of the commit message
-COMMIT_SUBJECT=$(echo "$COMMIT_MSG" | head -n 1)
+# Remove leading/trailing whitespace
+COMMIT_SUBJECT=$(echo "$COMMIT_MSG" | head -n 1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+# Check if commit message is empty after trimming
+if [ -z "$COMMIT_SUBJECT" ]; then
+  echo "❌ Error: Commit message is empty"
+  echo "Please provide a commit message following the format: type: description"
+  exit 1
+fi
 
 # Conventional commit format: type: description or type(scope): description
 # Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
-if echo "$COMMIT_SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
+# Pattern: type(optional-scope): description (must have at least one character after colon and space)
+if echo "$COMMIT_SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\([^)]+\))?: .+'; then
   exit 0
 else
   echo "❌ Commit message does not follow conventional commit format"

@@ -51,6 +51,15 @@ fi
 echo ""
 echo -e "${GREEN}✅ Git hooks installed successfully!${NC}"
 echo ""
+
+# Verify installation
+if [ -x ".git/hooks/commit-msg" ]; then
+  echo -e "${GREEN}✅ Verified: commit-msg hook is installed and executable${NC}"
+else
+  echo -e "${RED}❌ Warning: commit-msg hook may not be executable${NC}"
+fi
+
+echo ""
 echo -e "${BLUE}Hooks installed:${NC}"
 echo "  • commit-msg: Validates commit message format before commit"
 echo "  • pre-push: Additional validation before push (backup check)"
@@ -59,4 +68,12 @@ echo -e "${YELLOW}Note:${NC} Commit messages must follow conventional commit for
 echo "  Format: type: description"
 echo "  Example: feat: add user authentication"
 echo "  Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
+echo ""
+echo -e "${BLUE}To verify hooks are working, run:${NC}"
+echo "  ./scripts/verify-git-hooks.sh"
+echo ""
+echo -e "${YELLOW}Important:${NC} If you're using a Git GUI or IDE:"
+echo "  • Some clients may bypass hooks"
+echo "  • Use command line Git to ensure hooks are called"
+echo "  • Check your IDE's Git settings to enable hooks"
 

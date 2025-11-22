@@ -1,0 +1,3 @@
+# Ensure hooks are executable
+hooks/* text eol=lf
+
