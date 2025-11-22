@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { ordersApi, ratingApi } from '$lib/api';
 	import { redirectToLogin } from '$lib/auth.js';
+	import { getAccessToken, clearAuthCookies } from '$lib/cookies.js';
 
 	export let data;
 
@@ -18,10 +19,10 @@
 	let submittingRating = {}; // Map of productId -> boolean
 	let loadingRatings = false;
 
-	// Load order on client-side if not loaded server-side (for localStorage auth)
+	// Load order on client-side if not loaded server-side (for cookie auth)
 	onMount(async () => {
-		// Check if we have a token in localStorage
-		const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+		// Check if we have a token in cookies
+		const accessToken = typeof window !== 'undefined' ? getAccessToken() : null;
 		
 		// If server-side didn't load order (clientSideAuth flag) or we have a token but no order
 		if ((data.clientSideAuth || (accessToken && !order)) && !data.requiresAuth && !data.notFound) {
@@ -67,9 +68,7 @@
 						requiresAuth = true;
 						// Clear tokens
 						if (typeof window !== 'undefined') {
-							localStorage.removeItem('accessToken');
-							localStorage.removeItem('refreshToken');
-							localStorage.removeItem('sessionId');
+							clearAuthCookies();
 						}
 						// Don't redirect immediately, let user see the login prompt
 					}

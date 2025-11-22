@@ -4,6 +4,7 @@
 	import { cart, user } from '$lib/stores';
 	import { cartApi } from '$lib/api';
 	import { redirectToLogin, isAuthenticationError } from '$lib/auth.js';
+	import { getAccessToken, clearAuthCookies } from '$lib/cookies.js';
 
 	export let data;
 
@@ -19,7 +20,7 @@
 		}
 		
 		// Otherwise, try to load cart client-side if we have a token
-		const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+		const accessToken = typeof window !== 'undefined' ? getAccessToken() : null;
 		
 		if (accessToken) {
 			isLoadingCart = true;
@@ -33,9 +34,7 @@
 				if (isAuthenticationError(err)) {
 					// Clear tokens
 					if (typeof window !== 'undefined') {
-						localStorage.removeItem('accessToken');
-						localStorage.removeItem('refreshToken');
-						localStorage.removeItem('sessionId');
+						clearAuthCookies();
 					}
 					// Set cartData to null so login message shows
 					cartData = null;
@@ -148,7 +147,7 @@
 		<div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
 		<p class="text-gray-600 text-lg">Loading your cart...</p>
 	</div>
-{:else if data.requiresAuth || (!cartData && typeof window !== 'undefined' && !localStorage.getItem('accessToken'))}
+{:else if data.requiresAuth || (!cartData && typeof window !== 'undefined' && !getAccessToken())}
 	<div class="text-center py-12">
 		<p class="text-gray-600 text-lg mb-4">Please log in to view your cart.</p>
 		<button

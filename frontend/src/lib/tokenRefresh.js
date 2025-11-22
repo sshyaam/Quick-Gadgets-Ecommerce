@@ -4,6 +4,7 @@
  */
 
 import { authApi } from './api.js';
+import { getRefreshToken, getAccessToken, setAccessToken, setRefreshToken, clearAuthCookies } from './cookies.js';
 
 const REFRESH_INTERVAL_MS = 14 * 60 * 1000; // Refresh at 14 minutes (1 minute before 15-minute expiry)
 let refreshTimer = null;
@@ -57,7 +58,7 @@ async function refreshToken() {
 		return refreshPromise;
 	}
 	
-	const refreshTokenValue = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+	const refreshTokenValue = typeof window !== 'undefined' ? getRefreshToken() : null;
 	if (!refreshTokenValue) {
 		console.log('[tokenRefresh] No refresh token available');
 		const error = new Error('No refresh token available');
@@ -83,9 +84,9 @@ async function refreshToken() {
 				const data = await response.json();
 				
 				if (data.accessToken) {
-					localStorage.setItem('accessToken', data.accessToken);
+					setAccessToken(data.accessToken);
 					if (data.refreshToken) {
-						localStorage.setItem('refreshToken', data.refreshToken);
+						setRefreshToken(data.refreshToken);
 					}
 					console.log('[tokenRefresh] Token refreshed successfully');
 					
@@ -111,9 +112,7 @@ async function refreshToken() {
 				
 				// Refresh failed - clear tokens
 				if (typeof window !== 'undefined') {
-					localStorage.removeItem('accessToken');
-					localStorage.removeItem('refreshToken');
-					localStorage.removeItem('sessionId');
+					clearAuthCookies();
 				}
 				throw new Error(errorMessage);
 			}
@@ -121,9 +120,7 @@ async function refreshToken() {
 			console.error('[tokenRefresh] Error refreshing token:', error);
 			// On error, clear tokens
 			if (typeof window !== 'undefined') {
-				localStorage.removeItem('accessToken');
-				localStorage.removeItem('refreshToken');
-				localStorage.removeItem('sessionId');
+				clearAuthCookies();
 			}
 			throw error;
 		} finally {
@@ -142,7 +139,7 @@ async function refreshToken() {
 export async function checkAndRefreshToken() {
 	if (typeof window === 'undefined') return;
 	
-	const accessToken = localStorage.getItem('accessToken');
+	const accessToken = getAccessToken();
 	
 	if (!accessToken) {
 		return; // No token to refresh
@@ -171,7 +168,7 @@ export function scheduleRefresh() {
 	
 	if (typeof window === 'undefined') return;
 	
-	const accessToken = localStorage.getItem('accessToken');
+	const accessToken = getAccessToken();
 	if (!accessToken) {
 		return; // No token to schedule refresh for
 	}

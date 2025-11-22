@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { authApi } from '$lib/api';
 	import { user } from '$lib/stores';
+	import { setAuthTokens } from '$lib/cookies.js';
 
 	let name = '';
 	let email = '';
@@ -82,14 +83,9 @@
 				}
 			});
 			
-			// Store tokens in localStorage as fallback (if cookies don't work)
-			if (result.accessToken) {
-				localStorage.setItem('accessToken', result.accessToken);
-				localStorage.setItem('refreshToken', result.refreshToken);
-				localStorage.setItem('sessionId', result.sessionId);
-			}
+			// Store tokens in cookies
+			setAuthTokens(result);
 			
-			// Cookies are set by the server response (if browser allows)
 			// Wait a moment for cookies to be set, then fetch profile
 			await new Promise(resolve => setTimeout(resolve, 100));
 			

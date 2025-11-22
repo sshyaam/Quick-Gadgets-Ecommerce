@@ -6,13 +6,14 @@
 	import { initTokenRefresh, stopRefresh } from '$lib/tokenRefresh.js';
 	import Nav from '$lib/components/Nav.svelte';
 	import { browser } from '$app/environment';
+	import { getAccessToken, clearAuthCookies } from '$lib/cookies.js';
 
 	let mounted = false;
 	let checkingAuth = false;
 
-	// Initialize user state synchronously from localStorage to prevent flash
+	// Initialize user state synchronously from cookies to prevent flash
 	if (browser) {
-		const accessToken = localStorage.getItem('accessToken');
+		const accessToken = getAccessToken();
 		// If we have a token, we're checking authentication
 		// This prevents showing login buttons while we verify the token
 		if (accessToken) {
@@ -33,8 +34,8 @@
 		// Initialize automatic token refresh
 		initTokenRefresh();
 		
-		// Check if we have a token in localStorage
-		const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+		// Check if we have a token in cookies
+		const accessToken = typeof window !== 'undefined' ? getAccessToken() : null;
 		
 		if (!accessToken) {
 			// No token, user is not authenticated
@@ -60,11 +61,9 @@
 				}
 			} else {
 				// Profile fetch failed, but we have a token - might be expired
-				// Clear localStorage and set user to null
+				// Clear cookies and set user to null
 				if (typeof window !== 'undefined') {
-					localStorage.removeItem('accessToken');
-					localStorage.removeItem('refreshToken');
-					localStorage.removeItem('sessionId');
+					clearAuthCookies();
 				}
 				user.set(null);
 				cart.set(null);
@@ -73,9 +72,7 @@
 			// User not authenticated - clear tokens
 			console.log('User not authenticated:', err.message);
 			if (typeof window !== 'undefined') {
-				localStorage.removeItem('accessToken');
-				localStorage.removeItem('refreshToken');
-				localStorage.removeItem('sessionId');
+				clearAuthCookies();
 			}
 			user.set(null);
 			cart.set(null);

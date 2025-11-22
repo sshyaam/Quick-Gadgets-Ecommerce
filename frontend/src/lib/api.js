@@ -3,6 +3,7 @@
  */
 
 import { checkAndRefreshToken, scheduleRefresh } from './tokenRefresh.js';
+import { getAccessToken, getRefreshToken, clearAuthCookies } from './cookies.js';
 
 const WORKER_URLS = {
 	auth: 'https://auth-worker.shyaamdps.workers.dev',
@@ -32,13 +33,13 @@ export async function apiRequest(url, options = {}, cookies = null) {
 		}
 	}
 
-	// In browser context, try to get token from localStorage as fallback
+	// In browser context, get token from cookies
 	if (typeof window !== 'undefined') {
 		// Check and refresh token proactively before making request
 		await checkAndRefreshToken();
 		
-		const accessToken = localStorage.getItem('accessToken');
-		// Always add Authorization header if token exists (as fallback to cookies)
+		const accessToken = getAccessToken();
+		// Add Authorization header if token exists
 		if (accessToken && !headers['Authorization']) {
 			headers['Authorization'] = `Bearer ${accessToken}`;
 		}
@@ -56,8 +57,8 @@ export async function apiRequest(url, options = {}, cookies = null) {
 
 			// Check if response is 401 - try to refresh token
 			if (response.status === 401 && typeof window !== 'undefined') {
-				// Check if we have a refresh token (either in cookies or localStorage)
-				const refreshToken = localStorage.getItem('refreshToken');
+				// Check if we have a refresh token in cookies
+				const refreshToken = getRefreshToken();
 				
 				if (refreshToken) {
 					try {
@@ -66,7 +67,7 @@ export async function apiRequest(url, options = {}, cookies = null) {
 						await checkAndRefreshToken();
 						
 						// Check if we got a new token after refresh
-						const newAccessToken = localStorage.getItem('accessToken');
+						const newAccessToken = getAccessToken();
 						if (newAccessToken) {
 							// Retry original request with new token
 							headers['Authorization'] = `Bearer ${newAccessToken}`;
@@ -76,9 +77,7 @@ export async function apiRequest(url, options = {}, cookies = null) {
 							// If still 401 after refresh, the refresh token is invalid
 							if (response.status === 401) {
 								console.warn('[apiRequest] Still 401 after refresh, clearing tokens');
-								localStorage.removeItem('accessToken');
-								localStorage.removeItem('refreshToken');
-								localStorage.removeItem('sessionId');
+								clearAuthCookies();
 							}
 						} else {
 							// No new token after refresh attempt - tokens were cleared
@@ -296,7 +295,7 @@ export const adminApi = {
 
 		// Check and refresh token proactively
 		await checkAndRefreshToken();
-		const accessToken = localStorage.getItem('accessToken');
+		const accessToken = getAccessToken();
 		
 		const headers = {};
 		if (accessToken) {

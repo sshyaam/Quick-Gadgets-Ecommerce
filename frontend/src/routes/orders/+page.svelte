@@ -6,6 +6,7 @@
 	import { ordersApi } from '$lib/api';
 	import Pagination from '$lib/components/Pagination.svelte';
 	import { redirectToLogin } from '$lib/auth.js';
+	import { clearAuthCookies, getAccessToken } from '$lib/cookies.js';
 
 	export let data;
 
@@ -51,9 +52,7 @@
 			if (err.message.includes('401') || err.message.includes('Unauthorized')) {
 				requiresAuth = true;
 				if (typeof window !== 'undefined') {
-					localStorage.removeItem('accessToken');
-					localStorage.removeItem('refreshToken');
-					localStorage.removeItem('sessionId');
+					clearAuthCookies();
 				}
 			}
 		} finally {
@@ -175,8 +174,8 @@
 			window.addEventListener('popstate', handlePopState);
 		}
 		
-		// Check if we have a token in localStorage
-		const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+		// Check if we have a token in cookies
+		const accessToken = typeof window !== 'undefined' ? getAccessToken() : null;
 		
 		// Check if orders is empty object or null
 		const hasOrders = groupedOrders && Object.keys(groupedOrders).length > 0;
