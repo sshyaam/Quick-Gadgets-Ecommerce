@@ -10,54 +10,9 @@ env:
   WRANGLER_VERSION: '3.78.0'
 
 jobs:
-  validate-commit-message:
-    name: Validate Commit Message
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate commit message
-        run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_SHA="${{ github.sha }}"
-          
-          echo "Checking commit message for ${COMMIT_SHA}"
-          echo "Commit message: ${COMMIT_MSG}"
-          
-          # Get the first line of the commit message (subject)
-          COMMIT_SUBJECT=$(echo "$COMMIT_MSG" | head -n 1)
-          
-          # Conventional commit format: type: description or type(scope): description
-          # Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert
-          if echo "$COMMIT_SUBJECT" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
-            echo "✅ Commit message follows conventional commit format"
-            exit 0
-          else
-            echo "❌ Commit message does not follow conventional commit format"
-            echo ""
-            echo "Expected format: type: description"
-            echo "or: type(scope): description"
-            echo ""
-            echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
-            echo ""
-            echo "Examples:"
-            echo "  ✅ feat: add user authentication"
-            echo "  ✅ fix(api): resolve timeout issue"
-            echo "  ✅ docs: update README"
-            echo "  ❌ Added new feature"
-            echo "  ❌ fix bug"
-            echo ""
-            echo "Current commit message: ${COMMIT_SUBJECT}"
-            exit 1
-          fi
-
   detect-changed-workers:
     name: Detect Changed Workers
     runs-on: ubuntu-latest
-    needs: validate-commit-message
     outputs:
       workers: ${{ steps.detect.outputs.workers }}
       has-changes: ${{ steps.detect.outputs.has-changes }}
@@ -333,7 +288,7 @@ jobs:
   lint-and-test:
     name: Lint and Test
     runs-on: ubuntu-latest
-    needs: [validate-commit-message, detect-changed-workers]
+    needs: detect-changed-workers
     if: needs.detect-changed-workers.outputs.has-changes == 'true'
     steps:
       - name: Checkout code

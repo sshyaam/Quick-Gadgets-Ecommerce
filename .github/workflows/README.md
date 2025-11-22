@@ -91,12 +91,13 @@ Before using these workflows, you need to configure the following secrets in you
 - When a pull request is reopened
 
 **Flow:**
-1. **Validate Commit Message**: Validates all commit messages in the PR follow conventional commit format
-2. **Detect Changed Workers**: Analyzes changed files and determines which workers need deployment
-3. **Store Current Deployments**: Captures the current active deployment IDs for affected workers only
-4. **Lint and Test**: Runs linter (if available) and all unit tests
-5. **Deploy to Preview**: If tests pass, deploys only the changed workers to preview/staging
-6. **Rollback on Failure**: If tests fail, automatically rolls back only the affected workers
+1. **Detect Changed Workers**: Analyzes changed files and determines which workers need deployment
+2. **Store Current Deployments**: Captures the current active deployment IDs for affected workers only
+3. **Lint and Test**: Runs linter (if available) and all unit tests
+4. **Deploy to Preview**: If tests pass, deploys only the changed workers to preview/staging
+5. **Rollback on Failure**: If tests fail, automatically rolls back only the affected workers
+
+**Note:** Commit message validation is handled locally via Git hooks, not in CI/CD.
 
 **Features:**
 - Stores deployment IDs in memory (GitHub Actions artifacts)
@@ -109,12 +110,13 @@ Before using these workflows, you need to configure the following secrets in you
 - When code is pushed to the `main` branch
 
 **Flow:**
-1. **Validate Commit Message**: Validates commit message follows conventional commit format
-2. **Detect Changed Workers**: Analyzes changed files and determines which workers need deployment
-3. **Store Production Deployments**: Captures current production deployment IDs and SHAs for affected workers only
-4. **Lint and Test**: Runs linter (if available) and all unit tests
-5. **Deploy to Production**: If tests pass, deploys only the changed workers to production
-6. **Rollback on Failure**: If tests or deployment fail, automatically rolls back only the affected workers
+1. **Detect Changed Workers**: Analyzes changed files and determines which workers need deployment
+2. **Store Production Deployments**: Captures current production deployment IDs and SHAs for affected workers only
+3. **Lint and Test**: Runs linter (if available) and all unit tests
+4. **Deploy to Production**: If tests pass, deploys only the changed workers to production
+5. **Rollback on Failure**: If tests or deployment fail, automatically rolls back only the affected workers
+
+**Note:** Commit message validation is handled locally via Git hooks, not in CI/CD.
 
 **Features:**
 - Stores both deployment IDs and commit SHAs
@@ -267,13 +269,6 @@ If rollback fails:
 1. Check if previous deployments exist in Cloudflare dashboard
 2. Verify deployment IDs were stored correctly
 3. Manually rollback via Cloudflare dashboard if needed
-
-### Commit Message Validation Failures
-
-If commit message validation fails:
-1. Update your commit message to follow conventional commit format
-2. For PRs: Update the PR title and/or commit messages
-3. For production: Amend the commit message or create a new commit with correct format
 
 ### Test Failures
 

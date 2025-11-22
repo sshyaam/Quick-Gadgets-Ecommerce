@@ -9,59 +9,9 @@ env:
   WRANGLER_VERSION: '3.78.0'
 
 jobs:
-  validate-commit-message:
-    name: Validate Commit Message
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Validate commit messages in PR
-        run: |
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          
-          echo "Checking commit messages between ${BASE_SHA} and ${HEAD_SHA}"
-          
-          # Get all commit messages in the PR
-          COMMITS=$(git log --format="%s" ${BASE_SHA}..${HEAD_SHA})
-          
-          if [ -z "$COMMITS" ]; then
-            echo "⚠️  No commits found in PR"
-            exit 0
-          fi
-          
-          INVALID_COMMITS=()
-          while IFS= read -r COMMIT_MSG; do
-            if [ -n "$COMMIT_MSG" ]; then
-              echo "Checking: ${COMMIT_MSG}"
-              if ! echo "$COMMIT_MSG" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert)(\(.+\))?: .+'; then
-                INVALID_COMMITS+=("$COMMIT_MSG")
-              fi
-            fi
-          done <<< "$COMMITS"
-          
-          if [ ${#INVALID_COMMITS[@]} -gt 0 ]; then
-            echo "❌ Found ${#INVALID_COMMITS[@]} commit(s) that don't follow conventional commit format:"
-            for commit in "${INVALID_COMMITS[@]}"; do
-              echo "  - ${commit}"
-            done
-            echo ""
-            echo "Expected format: type: description"
-            echo "or: type(scope): description"
-            echo ""
-            echo "Allowed types: feat, fix, docs, style, refactor, test, chore, perf, ci, build, revert"
-            exit 1
-          else
-            echo "✅ All commit messages follow conventional commit format"
-          fi
-
   detect-changed-workers:
     name: Detect Changed Workers
     runs-on: ubuntu-latest
-    needs: validate-commit-message
     outputs:
       workers: ${{ steps.detect.outputs.workers }}
       has-changes: ${{ steps.detect.outputs.has-changes }}
@@ -279,7 +229,7 @@ jobs:
   lint-and-test:
     name: Lint and Test
     runs-on: ubuntu-latest
-    needs: [validate-commit-message, detect-changed-workers]
+    needs: detect-changed-workers
     if: needs.detect-changed-workers.outputs.has-changes == 'true'
     steps:
       - name: Checkout code
