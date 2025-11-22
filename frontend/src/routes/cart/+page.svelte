@@ -8,11 +8,12 @@
 	export let data;
 
 	let cartData = data.cart;
+	let isLoadingCart = false; // Track initial cart loading
 	
 	// Load cart on client-side if not loaded server-side (for localStorage auth)
 	onMount(async () => {
 		// If we already have cart data from server, use it
-		if (data.cart) {
+		if (data.cart !== null && data.cart !== undefined) {
 			cartData = data.cart;
 			return;
 		}
@@ -21,6 +22,7 @@
 		const accessToken = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 		
 		if (accessToken) {
+			isLoadingCart = true;
 			try {
 				const loadedCart = await cartApi.getCart();
 				cart.set(loadedCart);
@@ -28,7 +30,7 @@
 			} catch (err) {
 				console.error('Error loading cart:', err);
 				// If it fails with 401, user might not be logged in
-				if (err.message.includes('401') || err.message.includes('Unauthorized')) {
+				if (isAuthenticationError(err)) {
 					// Clear tokens
 					if (typeof window !== 'undefined') {
 						localStorage.removeItem('accessToken');
@@ -41,10 +43,13 @@
 					// Other error - cart might be empty, set to empty array
 					cartData = { items: [] };
 				}
+			} finally {
+				isLoadingCart = false;
 			}
 		} else {
 			// No token - set to null so login message shows
 			cartData = null;
+			isLoadingCart = false;
 		}
 	});
 	let loading = false;
@@ -138,7 +143,12 @@
 	<title>Shopping Cart - Quick Gadgets</title>
 </svelte:head>
 
-{#if data.requiresAuth || (!cartData && typeof window !== 'undefined' && !localStorage.getItem('accessToken'))}
+{#if isLoadingCart}
+	<div class="text-center py-12">
+		<div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+		<p class="text-gray-600 text-lg">Loading your cart...</p>
+	</div>
+{:else if data.requiresAuth || (!cartData && typeof window !== 'undefined' && !localStorage.getItem('accessToken'))}
 	<div class="text-center py-12">
 		<p class="text-gray-600 text-lg mb-4">Please log in to view your cart.</p>
 		<button
