@@ -327,8 +327,8 @@ jobs:
             CONFIG_FILE="wrangler.${worker}.toml"
             if [ -f "$CONFIG_FILE" ]; then
               echo "Deploying ${worker} to preview (PR #${PR_NUMBER})..."
-              # Deploy with PR number in message for tracking
-              if wrangler deploy --config "$CONFIG_FILE" --message "Preview deployment for PR #${PR_NUMBER} (${PR_SHA:0:7})" 2>&1; then
+              # Deploy to preview
+              if wrangler deploy --config "$CONFIG_FILE" 2>&1; then
                 echo "✅ Successfully deployed ${worker} to preview"
               else
                 echo "❌ Failed to deploy ${worker} to preview"
@@ -407,8 +407,8 @@ jobs:
               
               if [ -n "$DEPLOYMENT_ID" ]; then
                 echo "Rolling back ${worker} to deployment ${DEPLOYMENT_ID}..."
-                # Use wrangler rollback with specific deployment ID if supported
-                if wrangler rollback --config "$CONFIG_FILE" --message "Rollback after failed PR tests" 2>&1; then
+                # Use wrangler rollback
+                if wrangler rollback --config "$CONFIG_FILE" 2>&1; then
                   echo "✅ Successfully rolled back ${worker}"
                 else
                   echo "⚠️  Could not rollback ${worker} (may not have previous deployment)"
