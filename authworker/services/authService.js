@@ -98,10 +98,23 @@ export async function signup(userData, db, encryptionKey, logWorkerBindingOrUrl,
     email: normalizedEmail,
     name: userData.name,
     contactNumber: userData.contactNumber || null,
-    address: userData.address || null,
+    address: userData.address || null, // Keep for backward compatibility
     password: hashedPassword, // Store hashed password in encrypted data
     isAdmin: userData.isAdmin === true, // Store admin flag
+    savedAddresses: [], // Initialize saved addresses array
   };
+
+  // If address is provided during signup, add it to savedAddresses
+  if (userData.address) {
+    // Generate UUID using Web Crypto API (available in Cloudflare Workers)
+    const addressId = crypto.randomUUID();
+    const savedAddress = {
+      addressId,
+      ...userData.address,
+      createdAt: new Date().toISOString(),
+    };
+    piiData.savedAddresses.push(savedAddress);
+  }
 
   const encryptedData = encrypt(JSON.stringify(piiData), encryptionKey);
 
