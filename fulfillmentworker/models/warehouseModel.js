@@ -67,6 +67,7 @@ export function calculateZone(warehousePincode, customerPincode) {
 
 /**
  * Get nearest warehouse to a pincode with stock availability check
+ * Checks total available stock across all warehouses (supports multi-warehouse fulfillment)
  * @param {D1Database} db - Database instance
  * @param {string} pincode - Customer pincode
  * @param {string} state - Customer state
@@ -76,24 +77,51 @@ export function calculateZone(warehousePincode, customerPincode) {
  * @returns {Promise<Object|null>} Warehouse with stock info or null
  */
 export async function getNearestWarehouseWithStock(db, pincode, state, city, productId, requiredQuantity = 1) {
-  // First try exact pincode match with stock
+  // First, check if total available stock across ALL warehouses is sufficient
+  // This allows multi-warehouse fulfillment (e.g., 10 from warehouse B + 5 from warehouse C)
+  const { getStock } = await import('./inventoryModel.js');
+  const totalStock = await getStock(db, productId);
+  
+  if (!totalStock) {
+    return null; // Product not in inventory
+  }
+  
+  const totalAvailable = (totalStock.quantity || 0) - (totalStock.reserved_quantity || 0);
+  
+  // If total available stock is insufficient, return null
+  if (totalAvailable < requiredQuantity) {
+    return null;
+  }
+  
+  // Total stock is sufficient - now find the nearest warehouse for zone/shipping calculation
+  // We don't require this warehouse to have all the stock, since fulfillment can split across warehouses
+  
+  // First try exact pincode match - find nearest warehouse that serves this pincode
   let warehouses = await getWarehousesByPincode(db, pincode);
   
   if (warehouses.length > 0) {
-    // Check which warehouses have stock
+    // Check which warehouses have any stock (even if not enough individually)
+    const warehousesWithAnyStock = [];
     for (const warehouse of warehouses) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) >= requiredQuantity) {
-        return {
+      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
+        warehousesWithAnyStock.push({
           ...warehouse,
           availableStock: stock.quantity - stock.reserved_quantity,
           zone: calculateZone(warehouse.pincode, pincode)
-        };
+        });
       }
+    }
+    
+    // If we found warehouses with stock, return the one with most stock (or first one)
+    if (warehousesWithAnyStock.length > 0) {
+      // Sort by available stock (descending) to prefer warehouse with most stock
+      warehousesWithAnyStock.sort((a, b) => b.availableStock - a.availableStock);
+      return warehousesWithAnyStock[0];
     }
   }
   
-  // If no exact match with stock, find warehouses in same state with stock
+  // If no exact pincode match with stock, find warehouses in same state with stock
   const stateWarehouses = await db
     .prepare(
       `SELECT w.warehouse_id, w.name, w.pincode, w.city, w.state, w.address
@@ -105,16 +133,26 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
     .all();
   
   if (stateWarehouses.results && stateWarehouses.results.length > 0) {
-    // Check stock in each warehouse, return closest one with stock
+    // Find warehouses with any stock in same state
+    const warehousesWithAnyStock = [];
     for (const warehouse of stateWarehouses.results) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) >= requiredQuantity) {
-        return {
+      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
+        warehousesWithAnyStock.push({
           ...warehouse,
           availableStock: stock.quantity - stock.reserved_quantity,
           zone: calculateZone(warehouse.pincode, pincode)
-        };
+        });
       }
+    }
+    
+    if (warehousesWithAnyStock.length > 0) {
+      // Sort by zone (1 < 2 < 3), then by available stock (descending)
+      warehousesWithAnyStock.sort((a, b) => {
+        if (a.zone !== b.zone) return a.zone - b.zone;
+        return b.availableStock - a.availableStock;
+      });
+      return warehousesWithAnyStock[0];
     }
   }
   
@@ -130,12 +168,12 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
     .all();
   
   if (allWarehouses.results && allWarehouses.results.length > 0) {
-    // Sort by zone (prefer same state)
-    const warehousesWithStock = [];
+    // Find all warehouses with any stock
+    const warehousesWithAnyStock = [];
     for (const warehouse of allWarehouses.results) {
       const stock = await getStockFromWarehouse(db, productId, warehouse.warehouse_id);
-      if (stock && (stock.quantity - stock.reserved_quantity) >= requiredQuantity) {
-        warehousesWithStock.push({
+      if (stock && (stock.quantity - stock.reserved_quantity) > 0) {
+        warehousesWithAnyStock.push({
           ...warehouse,
           availableStock: stock.quantity - stock.reserved_quantity,
           zone: calculateZone(warehouse.pincode, pincode)
@@ -143,19 +181,20 @@ export async function getNearestWarehouseWithStock(db, pincode, state, city, pro
       }
     }
     
-    if (warehousesWithStock.length > 0) {
-      // Sort by zone (1 < 2 < 3), then by distance (pincode similarity)
-      warehousesWithStock.sort((a, b) => {
+    if (warehousesWithAnyStock.length > 0) {
+      // Sort by zone (1 < 2 < 3), then by available stock (descending)
+      warehousesWithAnyStock.sort((a, b) => {
         if (a.zone !== b.zone) return a.zone - b.zone;
         // If same zone, prefer same state
         if (a.state === state && b.state !== state) return -1;
         if (b.state === state && a.state !== state) return 1;
-        return 0;
+        return b.availableStock - a.availableStock;
       });
-      return warehousesWithStock[0];
+      return warehousesWithAnyStock[0];
     }
   }
   
+  // Should not reach here if total stock check passed, but return null as fallback
   return null;
 }
 
