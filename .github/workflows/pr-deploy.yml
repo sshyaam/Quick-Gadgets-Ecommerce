@@ -152,80 +152,6 @@ jobs:
             fi
           fi
 
-  store-current-deployments:
-    name: Store Current Deployment IDs
-    runs-on: ubuntu-latest
-    needs: detect-changed-workers
-    if: needs.detect-changed-workers.outputs.has-changes == 'true'
-    outputs:
-      deployment-ids: ${{ steps.store.outputs.ids }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install Wrangler
-        run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
-
-      - name: Authenticate with Cloudflare
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Get changed workers list
-        id: workers-list
-        run: |
-          WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
-          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
-          echo "Workers to process:"
-          cat workers-list.txt
-
-      - name: Get current deployment IDs
-        id: store
-        run: |
-          DEPLOYMENT_IDS=""
-          
-          while IFS= read -r worker; do
-            CONFIG_FILE="wrangler.${worker}.toml"
-            if [ -f "$CONFIG_FILE" ]; then
-              echo "Getting deployment ID for ${worker}..."
-              # Get the latest deployment ID (skip the first one if it's the current deployment)
-              DEPLOYMENT_JSON=$(wrangler deployments list --config "$CONFIG_FILE" --format json 2>/dev/null || echo "[]")
-              DEPLOYMENT_ID=$(echo "$DEPLOYMENT_JSON" | jq -r 'if length > 1 then .[1].id // .[0].id else .[0].id // empty end' 2>/dev/null || echo "")
-              
-              if [ -n "$DEPLOYMENT_ID" ] && [ "$DEPLOYMENT_ID" != "null" ]; then
-                echo "${worker}_deployment_id=${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT
-                DEPLOYMENT_IDS="${DEPLOYMENT_IDS}${worker}:${DEPLOYMENT_ID};"
-                echo "Stored deployment ID for ${worker}: ${DEPLOYMENT_ID}"
-              else
-                echo "Warning: Could not get deployment ID for ${worker}"
-                echo "${worker}_deployment_id=" >> $GITHUB_OUTPUT
-              fi
-            fi
-          done < workers-list.txt
-          
-          # Store all IDs as a single output
-          echo "ids=${DEPLOYMENT_IDS}" >> $GITHUB_OUTPUT
-          
-          # Also save to file for later retrieval
-          echo "$DEPLOYMENT_IDS" > deployment-ids.txt
-
-      - name: Upload deployment IDs artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: deployment-ids
-          path: deployment-ids.txt
-          retention-days: 1
-
   lint-and-test:
     name: Lint and Test
     runs-on: ubuntu-latest
@@ -266,6 +192,87 @@ jobs:
             test-results.xml
           retention-days: 7
 
+  store-current-deployments:
+    name: Store Current Deployment IDs
+    runs-on: ubuntu-latest
+    needs: [detect-changed-workers, lint-and-test]
+    if: needs.detect-changed-workers.outputs.has-changes == 'true'
+    outputs:
+      deployment-ids: ${{ steps.store.outputs.ids }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Wrangler
+        run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
+
+      - name: Authenticate with Cloudflare
+        run: |
+          export CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          # Verify authentication
+          wrangler whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Get changed workers list
+        id: workers-list
+        run: |
+          WORKERS_JSON='${{ needs.detect-changed-workers.outputs.workers }}'
+          echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
+          echo "Workers to process:"
+          cat workers-list.txt
+
+      - name: Get current deployment IDs
+        id: store
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          DEPLOYMENT_IDS=""
+          
+          while IFS= read -r worker; do
+            CONFIG_FILE="wrangler.${worker}.toml"
+            if [ -f "$CONFIG_FILE" ]; then
+              echo "Getting deployment ID for ${worker}..."
+              # Get the latest deployment ID (skip the first one if it's the current deployment)
+              DEPLOYMENT_JSON=$(wrangler deployments list --config "$CONFIG_FILE" --format json 2>/dev/null || echo "[]")
+              DEPLOYMENT_ID=$(echo "$DEPLOYMENT_JSON" | jq -r 'if length > 1 then .[1].id // .[0].id else .[0].id // empty end' 2>/dev/null || echo "")
+              
+              if [ -n "$DEPLOYMENT_ID" ] && [ "$DEPLOYMENT_ID" != "null" ]; then
+                echo "${worker}_deployment_id=${DEPLOYMENT_ID}" >> $GITHUB_OUTPUT
+                DEPLOYMENT_IDS="${DEPLOYMENT_IDS}${worker}:${DEPLOYMENT_ID};"
+                echo "Stored deployment ID for ${worker}: ${DEPLOYMENT_ID}"
+              else
+                echo "Warning: Could not get deployment ID for ${worker}"
+                echo "${worker}_deployment_id=" >> $GITHUB_OUTPUT
+              fi
+            fi
+          done < workers-list.txt
+          
+          # Store all IDs as a single output
+          echo "ids=${DEPLOYMENT_IDS}" >> $GITHUB_OUTPUT
+          
+          # Also save to file for later retrieval
+          echo "$DEPLOYMENT_IDS" > deployment-ids.txt
+
+      - name: Upload deployment IDs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-ids
+          path: deployment-ids.txt
+          retention-days: 1
+
   deploy-preview:
     name: Deploy to Preview
     runs-on: ubuntu-latest
@@ -291,10 +298,14 @@ jobs:
         run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
 
       - name: Authenticate with Cloudflare
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          export CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          # Verify authentication
+          wrangler whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Get changed workers list
         run: |
@@ -304,6 +315,9 @@ jobs:
           cat workers-list.txt
 
       - name: Deploy to preview
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           FAILED_WORKERS=()
           PR_NUMBER="${{ github.event.pull_request.number }}"
@@ -350,10 +364,14 @@ jobs:
         run: npm install -g wrangler@${{ env.WRANGLER_VERSION }}
 
       - name: Authenticate with Cloudflare
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          export CLOUDFLARE_API_TOKEN="${{ secrets.CLOUDFLARE_API_TOKEN }}"
+          export CLOUDFLARE_ACCOUNT_ID="${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
+          # Verify authentication
+          wrangler whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Download stored deployment IDs
         uses: actions/download-artifact@v4
@@ -367,6 +385,9 @@ jobs:
           echo "$WORKERS_JSON" | jq -r '.[]' > workers-list.txt
 
       - name: Rollback deployments
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           # Get stored deployment IDs from artifact or job output
           if [ -f "deployment-ids.txt" ]; then
