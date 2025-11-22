@@ -51,8 +51,10 @@
 						shippingData: loadedOrder.shippingData,
 					};
 					
-					// Calculate delivery date
-					if (order.shippingInfo && order.createdAt) {
+					// Calculate delivery date only for confirmed orders (processing, completed)
+					// Don't show delivery dates for pending, failed, or cancelled orders
+					if (order.shippingInfo && order.createdAt && 
+					    (order.status === 'processing' || order.status === 'completed')) {
 						const deliveryDate = new Date(order.createdAt);
 						deliveryDate.setDate(deliveryDate.getDate() + (order.shippingInfo.estimatedDelivery || 5));
 						order.deliveryDate = deliveryDate.toISOString().split('T')[0];
@@ -194,7 +196,14 @@
 	}
 	
 	// Calculate delivery date for an item
-	function getItemDeliveryDate(item, orderCreatedAt) {
+	// Only show delivery dates for confirmed orders (processing, completed)
+	// Don't show for pending, failed, or cancelled orders
+	function getItemDeliveryDate(item, orderCreatedAt, orderStatus) {
+		// Only show delivery dates for confirmed orders
+		if (orderStatus !== 'processing' && orderStatus !== 'completed') {
+			return null;
+		}
+		
 		if (item.shipping?.deliveryDate) {
 			return item.shipping.deliveryDate;
 		}
@@ -272,7 +281,7 @@
 					<p class="text-sm text-gray-600">
 						<strong>Placed on:</strong> {formatDate(order.createdAt)}
 					</p>
-					{#if order.deliveryDate}
+					{#if order.deliveryDate && order.status !== 'failed' && order.status !== 'cancelled' && order.status !== 'pending'}
 						<p class="text-sm text-gray-600">
 							<strong>Estimated Delivery:</strong> {formatDate(order.deliveryDate)}
 						</p>
@@ -305,7 +314,7 @@
 					{@const itemsByDeliveryDate = (() => {
 						const grouped = {};
 						order.items.forEach(item => {
-							const itemDeliveryDate = getItemDeliveryDate(item, order.createdAt);
+							const itemDeliveryDate = getItemDeliveryDate(item, order.createdAt, order.status);
 							const dateKey = itemDeliveryDate || 'unknown';
 							if (!grouped[dateKey]) {
 								grouped[dateKey] = [];

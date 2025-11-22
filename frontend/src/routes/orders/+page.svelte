@@ -229,7 +229,14 @@
 	}
 	
 	// Calculate delivery date for an item
-	function getItemDeliveryDate(item, orderCreatedAt) {
+	// Only show delivery dates for confirmed orders (processing, completed)
+	// Don't show for pending, failed, or cancelled orders
+	function getItemDeliveryDate(item, orderCreatedAt, orderStatus) {
+		// Only show delivery dates for confirmed orders
+		if (orderStatus !== 'processing' && orderStatus !== 'completed') {
+			return null;
+		}
+		
 		if (item.shipping?.deliveryDate) {
 			return item.shipping.deliveryDate;
 		}
@@ -392,7 +399,7 @@
 						const orderData = orderMap.get(order.orderId);
 						// Group items by delivery date within this order
 						order.items?.forEach(item => {
-							const itemDeliveryDate = getItemDeliveryDate(item, order.createdAt);
+							const itemDeliveryDate = getItemDeliveryDate(item, order.createdAt, order.status);
 							const dateKey = itemDeliveryDate || 'unknown';
 							if (!orderData.itemsByDeliveryDate[dateKey]) {
 								orderData.itemsByDeliveryDate[dateKey] = [];

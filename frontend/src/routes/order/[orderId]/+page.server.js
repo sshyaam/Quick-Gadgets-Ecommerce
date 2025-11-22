@@ -77,8 +77,10 @@ export async function load({ params, cookies, fetch, request }) {
 			shippingData: order.shippingData,
 		};
 		
-		// Calculate delivery date
-		if (transformedOrder.shippingInfo && transformedOrder.createdAt) {
+		// Calculate delivery date only for confirmed orders (processing, completed)
+		// Don't show delivery dates for pending, failed, or cancelled orders
+		if (transformedOrder.shippingInfo && transformedOrder.createdAt && 
+		    (transformedOrder.status === 'processing' || transformedOrder.status === 'completed')) {
 			const deliveryDate = new Date(transformedOrder.createdAt);
 			deliveryDate.setDate(deliveryDate.getDate() + (transformedOrder.shippingInfo.estimatedDelivery || 5));
 			transformedOrder.deliveryDate = deliveryDate.toISOString().split('T')[0];
