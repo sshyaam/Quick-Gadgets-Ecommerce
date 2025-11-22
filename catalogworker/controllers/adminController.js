@@ -8,7 +8,6 @@ import * as productModel from '../models/productModel.js';
 import * as catalogService from '../services/catalogService.js';
 import { ValidationError } from '../../shared/utils/errors.js';
 import { sendLog } from '../../shared/utils/logger.js';
-import { randomUUID } from 'crypto';
 
 /**
  * Get all products (admin view - includes deleted)
@@ -191,7 +190,7 @@ export async function createProduct(request, env, ctx = null) {
   }
   
   // Generate product ID
-  const productId = randomUUID();
+  const productId = crypto.randomUUID();
   
   // Log product creation start
   await sendLog(logWorkerBindingOrUrl, 'event', 'Product creation started (admin)', {

@@ -4,7 +4,6 @@
 
 import { authenticateAdmin } from '../../shared/utils/adminAuth.js';
 import { ValidationError } from '../../shared/utils/errors.js';
-import { randomUUID } from 'crypto';
 
 /**
  * Upload product image to R2
@@ -37,7 +36,7 @@ export async function uploadImage(request, env) {
 
   // Generate unique filename
   const fileExtension = file.name.split('.').pop() || 'jpg';
-  const filename = `${randomUUID()}.${fileExtension}`;
+  const filename = `${crypto.randomUUID()}.${fileExtension}`;
   const objectKey = `products/${filename}`;
 
   // Convert file to array buffer

@@ -12,8 +12,8 @@ binding = "log_state"
 id = "1f34d7f68f1044678a6b97a88f4ccbbe"
 
 [observability]
-[observability.logs]
 enabled = false
+[observability.logs]
 head_sampling_rate = 1
 invocation_logs = true
 persist = true

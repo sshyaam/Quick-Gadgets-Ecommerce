@@ -2,8 +2,6 @@
  * Inventory model for fulfillment worker
  */
 
-import { randomUUID } from 'crypto';
-
 /**
  * Get stock for a product (aggregated across all warehouses)
  * @param {D1Database} db - Database instance
