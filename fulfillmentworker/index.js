@@ -5,6 +5,7 @@ import { validateApiKey } from '../shared/utils/interWorker.js';
 import { AuthenticationError } from '../shared/utils/errors.js';
 import { instrumentHandler, initRequestTrace, addTraceHeaders, createOtelConfig } from '../shared/utils/tracing.js';
 import * as fulfillmentController from './controllers/fulfillmentController.js';
+import { ReservedStockDO } from './durableObjects/ReservedStockDO.js';
 
 const router = Router();
 
@@ -96,6 +97,26 @@ router.get('/admin/shipping-rules', async (request, env) => {
   return await adminController.getAllShippingRules(request, env);
 });
 
+router.get('/admin/stock/:productId/reservations', async (request, env) => {
+  const authResult = await authenticateAdmin(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  request.user = authResult.user;
+  request.userId = authResult.userId;
+  return await adminController.getReservations(request, env);
+});
+
+router.post('/admin/stock/:productId/reservations/cleanup', async (request, env) => {
+  const authResult = await authenticateAdmin(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  request.user = authResult.user;
+  request.userId = authResult.userId;
+  return await adminController.cleanupReservations(request, env);
+});
+
 router.post('/stock/:productId/reduce', async (request, env, ctx) => {
   const authError = requireApiKey(request, env);
   if (authError) return authError;
@@ -112,6 +133,24 @@ router.post('/stock/:productId/release', async (request, env) => {
   const authError = requireApiKey(request, env);
   if (authError) return authError;
   return await fulfillmentController.releaseStock(request, env);
+});
+
+router.get('/stock/:productId/reserved', async (request, env) => {
+  const authError = requireApiKey(request, env);
+  if (authError) return authError;
+  return await fulfillmentController.getReservedStockStatus(request, env);
+});
+
+router.get('/stock/:productId/reservations', async (request, env) => {
+  const authError = requireApiKey(request, env);
+  if (authError) return authError;
+  return await fulfillmentController.getAllReservations(request, env);
+});
+
+router.post('/stock/:productId/reservations/cleanup', async (request, env) => {
+  const authError = requireApiKey(request, env);
+  if (authError) return authError;
+  return await fulfillmentController.cleanupReservations(request, env);
 });
 
 // Public shipping endpoints (called from frontend)
@@ -243,3 +282,6 @@ const otelConfig = (env) => createOtelConfig(env, 'ecommerce-platform');
 
 // Export instrumented handler
 export default instrumentHandler(handler, otelConfig);
+
+// Export Durable Object class
+export { ReservedStockDO };

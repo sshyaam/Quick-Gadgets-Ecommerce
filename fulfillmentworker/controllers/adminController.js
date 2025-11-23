@@ -253,3 +253,71 @@ export async function getAllShippingRules(request, env) {
   );
 }
 
+/**
+ * Get all reservations for a product (admin view - includes DO Storage data)
+ */
+export async function getReservations(request, env) {
+  // Authenticate admin
+  const authResult = await authenticateAdmin(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  
+  const { productId } = request.params;
+  
+  if (!env.reserved_stock_do) {
+    return new Response(
+      JSON.stringify({ error: 'ReservedStockDO binding not available' }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+  
+  const { getAllReservations } = await import('../utils/reservedStockDO.js');
+  const data = await getAllReservations(env.reserved_stock_do, productId);
+  
+  return new Response(
+    JSON.stringify(data),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
+ * Clean up expired reservations for a product (admin)
+ */
+export async function cleanupReservations(request, env) {
+  // Authenticate admin
+  const authResult = await authenticateAdmin(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  
+  const { productId } = request.params;
+  
+  if (!env.reserved_stock_do) {
+    return new Response(
+      JSON.stringify({ error: 'ReservedStockDO binding not available' }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+  
+  const { cleanupExpiredReservations } = await import('../utils/reservedStockDO.js');
+  const result = await cleanupExpiredReservations(env.reserved_stock_do, productId);
+  
+  return new Response(
+    JSON.stringify(result),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+

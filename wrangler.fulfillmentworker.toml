@@ -20,6 +20,11 @@ service = "auth-worker"
 binding = "log_worker"
 service = "log-worker"
 
+[[durable_objects.bindings]]
+name = "reserved_stock_do"
+class_name = "ReservedStockDO"
+script_name = "fulfillment-worker"
+
 # Note: Secrets (like HONEYCOMB_API_KEY) are set via: wrangler secret put HONEYCOMB_API_KEY --config wrangler.fulfillmentworker.toml
 # They are not defined in this file.
 
@@ -29,9 +34,9 @@ LOG_WORKER_URL = "https://log-worker.shyaamdps.workers.dev"
 AUTH_WORKER_URL = "https://auth-worker.shyaamdps.workers.dev"
 INTER_WORKER_API_KEY = "ECOMSECRET"
 
-# Migration to remove InventoryDO Durable Object class (after rollback)
+# Migration to add ReservedStockDO Durable Object class
+# Using new_sqlite_classes for free plan compatibility
 [[migrations]]
-tag = "remove-inventory-do-2024"
-new_classes = []
-deleted_classes = ["InventoryDO"]
+tag = "add-reserved-stock-do-2024"
+new_sqlite_classes = ["ReservedStockDO"]
 

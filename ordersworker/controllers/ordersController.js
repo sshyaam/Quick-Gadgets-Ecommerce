@@ -155,6 +155,28 @@ export async function getOrder(request, env) {
 /**
  * Capture payment (called after PayPal approval)
  */
+/**
+ * Cancel order and release reserved stock
+ */
+export async function cancelOrder(request, env, ctx = null) {
+  const { orderId } = request.params;
+  
+  if (!orderId) {
+    throw new ValidationError('orderId is required');
+  }
+  
+  const { cancelOrderSaga } = await import('../services/orderSagaService.js');
+  const result = await cancelOrderSaga(orderId, env, ctx);
+  
+  return new Response(
+    JSON.stringify(result),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
 export async function capturePayment(request, env, ctx = null) {
   const body = await request.json();
   const { orderId, paypalOrderId } = body;

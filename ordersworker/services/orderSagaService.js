@@ -69,6 +69,7 @@ export async function createOrderSaga(
     cartId: null,
     paypalOrderId: null,
     paymentId: null,
+    stockReserved: [], // Track reserved stock for compensation
     stockReduced: [],
     cartCleared: false,
     orderCreated: false,
@@ -507,6 +508,93 @@ export async function createOrderSaga(
       },
     });
     
+    // Step 5: Reserve stock for all items (with 15-minute TTL)
+    if (!env.fulfillment_worker) {
+      throw new Error('Fulfillment worker service binding not available');
+    }
+    
+    console.log('[order-saga] Reserving stock for', cart.items.length, 'items...');
+    const stockReservationPromises = cart.items.map(async (item) => {
+      // Inject trace context for distributed tracing
+      const stockHeaders = new Headers({
+        'Content-Type': 'application/json',
+        'X-API-Key': env.INTER_WORKER_API_KEY,
+        'X-Worker-Request': 'true',
+      });
+      const { injectTraceContext } = await import('../../shared/utils/otel.js');
+      injectTraceContext(stockHeaders);
+      
+      const reserveRequest = new Request('https://workers.dev/stock/' + item.productId + '/reserve', {
+        method: 'POST',
+        headers: stockHeaders,
+        body: JSON.stringify({ 
+          quantity: item.quantity,
+          orderId: order.orderId,
+          ttlMinutes: 15,
+        }),
+      });
+      
+      const response = await env.fulfillment_worker.fetch(reserveRequest);
+      
+      if (!response.ok) {
+        let errorText;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+        } catch (e) {
+          errorText = await response.text();
+        }
+        console.error(`[order-saga] Failed to reserve stock for product ${item.productId}:`, response.status, errorText);
+        throw new ConflictError(`Failed to reserve stock for product ${item.productId}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log(`[order-saga] Stock reserved for product ${item.productId}:`, result);
+      
+      sagaState.stockReserved.push({
+        productId: item.productId,
+        quantity: item.quantity,
+        orderId: order.orderId,
+      });
+    });
+    
+    await Promise.all(stockReservationPromises);
+    console.log('[order-saga] Stock reservation completed for all items');
+    
+    compensationSteps.push({
+      name: 'reserveStock',
+      compensate: async () => {
+        // Release reserved stock
+        if (!env.fulfillment_worker) {
+          console.error('[order-saga] Cannot release stock: fulfillment worker binding not available');
+          return;
+        }
+        
+        for (const reservation of sagaState.stockReserved) {
+          try {
+            const releaseHeaders = new Headers({
+              'Content-Type': 'application/json',
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            });
+            const { injectTraceContext: injectTraceContextRelease } = await import('../../shared/utils/otel.js');
+            injectTraceContextRelease(releaseHeaders);
+            
+            const releaseRequest = new Request('https://workers.dev/stock/' + reservation.productId + '/release', {
+              method: 'POST',
+              headers: releaseHeaders,
+              body: JSON.stringify({ orderId: reservation.orderId }),
+            });
+            
+            await env.fulfillment_worker.fetch(releaseRequest);
+            console.log(`[order-saga] Stock released for product ${reservation.productId}, order ${reservation.orderId}`);
+          } catch (error) {
+            console.error(`[order-saga] Failed to release stock for ${reservation.productId}:`, error);
+          }
+        }
+      },
+    });
+    
     // Step 5: Store payment record now that we have orderId
     if (env.payment_worker && paymentData.orderId) {
       try {
@@ -742,10 +830,14 @@ export async function capturePaymentSaga(
       const { injectTraceContext } = await import('../../shared/utils/otel.js');
       injectTraceContext(stockHeaders);
       
+      // Use orderId to reduce reserved stock (more efficient and accurate)
       const stockRequest = new Request('https://workers.dev/stock/' + item.productId + '/reduce', {
         method: 'POST',
         headers: stockHeaders,
-        body: JSON.stringify({ quantity: item.quantity }),
+        body: JSON.stringify({ 
+          quantity: item.quantity,
+          orderId: orderId, // Pass orderId to reduce the specific reservation
+        }),
       });
       
       const response = await env.fulfillment_worker.fetch(stockRequest);
@@ -917,12 +1009,150 @@ export async function capturePaymentSaga(
       }
     }
     
+    // Release reserved stock if payment capture failed (order was created but payment failed)
+    if (env.fulfillment_worker) {
+      try {
+        console.log('[payment-saga] Releasing reserved stock for failed payment...');
+        const orderItems = typeof order.productData === 'string' 
+          ? JSON.parse(order.productData).items 
+          : order.productData?.items || [];
+        
+        const releasePromises = orderItems.map(async (item) => {
+          const releaseHeaders = new Headers({
+            'Content-Type': 'application/json',
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          });
+          const { injectTraceContext } = await import('../../shared/utils/otel.js');
+          injectTraceContext(releaseHeaders);
+          
+          const releaseRequest = new Request('https://workers.dev/stock/' + item.productId + '/release', {
+            method: 'POST',
+            headers: releaseHeaders,
+            body: JSON.stringify({ orderId }),
+          });
+          
+          const response = await env.fulfillment_worker.fetch(releaseRequest);
+          if (response.ok) {
+            console.log(`[payment-saga] Released reserved stock for product ${item.productId}, order ${orderId}`);
+          } else {
+            console.warn(`[payment-saga] Failed to release stock for product ${item.productId}:`, response.status);
+          }
+        });
+        
+        await Promise.all(releasePromises);
+        console.log('[payment-saga] Stock release completed for failed payment');
+      } catch (releaseError) {
+        console.error('[payment-saga] Error releasing stock after payment failure:', releaseError);
+        // Don't fail the error handling if stock release fails
+      }
+    }
+    
     // Update order status to failed
     try {
       await updateOrderStatus(env.orders_db, orderId, 'failed');
     } catch (updateError) {
       console.error('[payment-saga] Failed to update order status:', updateError);
     }
+    
+    throw error;
+  }
+}
+
+/**
+ * Cancel order and release reserved stock
+ * Called when user cancels PayPal payment or order is manually cancelled
+ * @param {string} orderId - Order ID
+ * @param {Object} env - Environment bindings
+ * @param {Object} ctx - Execution context
+ * @returns {Promise<{success: boolean, message: string}>}
+ */
+export async function cancelOrderSaga(orderId, env, ctx = null) {
+  const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;
+  const apiKey = env.INTER_WORKER_API_KEY;
+  
+  try {
+    // Get order to get items
+    const { getOrderById } = await import('../models/orderModel.js');
+    const order = await getOrderById(env.orders_db, orderId);
+    
+    if (!order) {
+      throw new ConflictError(`Order ${orderId} not found`);
+    }
+    
+    // Only cancel if order is pending or processing (not already completed/failed/cancelled)
+    // These statuses indicate the order hasn't been fulfilled yet and may have reserved stock
+    const cancellableStatuses = ['pending', 'processing'];
+    if (!cancellableStatuses.includes(order.status)) {
+      console.log(`[cancel-order-saga] Order ${orderId} is already ${order.status}, cannot cancel`);
+      return {
+        success: false,
+        message: `Order is already ${order.status}, cannot cancel`,
+      };
+    }
+    
+    // Release reserved stock for all items
+    if (env.fulfillment_worker) {
+      const orderItems = typeof order.productData === 'string' 
+        ? JSON.parse(order.productData).items 
+        : order.productData?.items || [];
+      
+      console.log(`[cancel-order-saga] Releasing reserved stock for ${orderItems.length} items...`);
+      
+      const releasePromises = orderItems.map(async (item) => {
+        const releaseHeaders = new Headers({
+          'Content-Type': 'application/json',
+          'X-API-Key': env.INTER_WORKER_API_KEY,
+          'X-Worker-Request': 'true',
+        });
+        
+        const releaseBody = { orderId };
+        console.log(`[cancel-order-saga] Releasing stock for product ${item.productId}, orderId: ${orderId}, body:`, JSON.stringify(releaseBody));
+        
+        const releaseRequest = new Request('https://workers.dev/stock/' + item.productId + '/release', {
+          method: 'POST',
+          headers: releaseHeaders,
+          body: JSON.stringify(releaseBody),
+        });
+        
+        const response = await env.fulfillment_worker.fetch(releaseRequest);
+        if (response.ok) {
+          const responseData = await response.json().catch(() => ({}));
+          console.log(`[cancel-order-saga] Released reserved stock for product ${item.productId}, order ${orderId}. Response:`, JSON.stringify(responseData));
+        } else {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          console.error(`[cancel-order-saga] Failed to release stock for product ${item.productId}:`, response.status, errorText);
+        }
+      });
+      
+      await Promise.all(releasePromises);
+      console.log('[cancel-order-saga] Stock release completed');
+    }
+    
+    // Update order status to cancelled
+    await updateOrderStatus(env.orders_db, orderId, 'cancelled');
+    console.log(`[cancel-order-saga] Order ${orderId} cancelled successfully`);
+    
+    // Log order cancellation
+    await sendLog(logWorkerBindingOrUrl, 'event', 'Order cancelled', {
+      orderId,
+      worker: 'orders-worker',
+    }, apiKey, ctx);
+    
+    return {
+      success: true,
+      message: 'Order cancelled and stock released',
+    };
+    
+  } catch (error) {
+    console.error('[cancel-order-saga] Error cancelling order:', error);
+    
+    // Log cancellation failure
+    await sendLog(logWorkerBindingOrUrl, 'error', 'Order cancellation failed', {
+      orderId,
+      error: error.message,
+      worker: 'orders-worker',
+    }, apiKey, ctx);
     
     throw error;
   }

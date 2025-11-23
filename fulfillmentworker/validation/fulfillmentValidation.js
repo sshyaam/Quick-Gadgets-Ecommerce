@@ -10,6 +10,24 @@ export const updateStockSchema = Joi.object({
 
 export const reduceStockSchema = Joi.object({
   quantity: Joi.number().integer().positive().required(),
+  orderId: Joi.string().optional(), // Optional: for reducing specific reservation
+});
+
+export const reserveStockSchema = Joi.object({
+  quantity: Joi.number().integer().positive().required(),
+  orderId: Joi.string().required(), // Required: for TTL tracking
+  ttlMinutes: Joi.number().integer().positive().min(1).max(60).optional().default(15), // Optional: TTL in minutes (default 15)
+});
+
+export const releaseStockSchema = Joi.object({
+  orderId: Joi.string().optional(), // Preferred: release by orderId
+  quantity: Joi.number().integer().positive().optional(), // Backward compatibility: release by quantity
+}).or('orderId', 'quantity').custom((value, helpers) => {
+  // Custom validation: at least one must be provided
+  if (!value.orderId && !value.quantity) {
+    return helpers.error('any.custom', { message: 'Either orderId or quantity must be provided' });
+  }
+  return value;
 });
 
 export const calculateShippingSchema = Joi.object({

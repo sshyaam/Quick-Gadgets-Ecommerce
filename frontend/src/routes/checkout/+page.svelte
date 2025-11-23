@@ -103,7 +103,7 @@
 		}
 		
 		// Listen for payment completion message from PayPal return page
-		const handleMessage = (event) => {
+		const handleMessage = async (event) => {
 			// Only accept messages from same origin
 			if (event.origin !== window.location.origin) return;
 			
@@ -119,9 +119,20 @@
 				closePayPalLoading();
 				error = event.data.message || 'Payment processing failed. Please try again.';
 			} else if (event.data && event.data.type === 'PAYPAL_WINDOW_CLOSED') {
-				// PayPal window was closed prematurely
+				// PayPal window was closed prematurely - cancel order and release stock
 				closePayPalLoading();
-				error = 'Payment window was closed. If you completed the payment, please check your orders page.';
+				if (currentOrderId) {
+					try {
+						await ordersApi.cancelOrder(currentOrderId);
+						console.log('[checkout] Order cancelled due to window close:', currentOrderId);
+					} catch (cancelError) {
+						console.error('[checkout] Failed to cancel order on window close:', cancelError);
+					}
+					localStorage.removeItem('pendingOrderId');
+					localStorage.removeItem('pendingPaypalOrderId');
+					currentOrderId = null;
+				}
+				error = 'Payment window was closed. Order has been cancelled and stock released. If you completed the payment, please check your orders page.';
 			}
 		};
 		
@@ -145,7 +156,17 @@
 		};
 	});
 	
-	onDestroy(() => {
+	onDestroy(async () => {
+		// If user navigates away while order is pending, cancel it and release stock
+		if (currentOrderId && showPayPalLoading) {
+			try {
+				await ordersApi.cancelOrder(currentOrderId);
+				console.log('[checkout] Order cancelled on page navigation:', currentOrderId);
+			} catch (cancelError) {
+				console.error('[checkout] Failed to cancel order on navigation:', cancelError);
+			}
+		}
+		
 		// Cleanup intervals and windows
 		if (paypalCheckInterval) {
 			clearInterval(paypalCheckInterval);
@@ -404,9 +425,21 @@
 		loading = false;
 	}
 	
-	function cancelPayPalPayment() {
+	async function cancelPayPalPayment() {
 		closePayPalLoading();
-		error = 'Payment cancelled. You can try again when ready.';
+		
+		// Cancel order and release reserved stock if order exists
+		if (currentOrderId) {
+			try {
+				await ordersApi.cancelOrder(currentOrderId);
+				console.log('[checkout] Order cancelled and stock released:', currentOrderId);
+			} catch (cancelError) {
+				console.error('[checkout] Failed to cancel order:', cancelError);
+				// Don't show error to user - stock will be released by TTL anyway
+			}
+		}
+		
+		error = 'Payment cancelled. Reserved stock has been released. You can try again when ready.';
 		// Clear stored order data
 		if (currentOrderId) {
 			localStorage.removeItem('pendingOrderId');
@@ -616,15 +649,26 @@
 				timeRemaining = 15 * 60; // Reset timer to 15 minutes
 				
 				// Start countdown timer
-				paypalTimerInterval = setInterval(() => {
+				paypalTimerInterval = setInterval(async () => {
 					if (timeRemaining > 0) {
 						timeRemaining--;
 					} else {
-						// Timer expired - close PayPal window
+						// Timer expired - cancel order and release stock
 						clearInterval(paypalTimerInterval);
 						paypalTimerInterval = null;
 						closePayPalLoading();
-						error = 'Payment session expired (15 minutes). Please try again.';
+						
+						// Cancel order and release reserved stock
+						if (currentOrderId) {
+							try {
+								await ordersApi.cancelOrder(currentOrderId);
+								console.log('[checkout] Order cancelled due to timer expiration:', currentOrderId);
+							} catch (cancelError) {
+								console.error('[checkout] Failed to cancel order on timer expiration:', cancelError);
+							}
+						}
+						
+						error = 'Payment session expired (15 minutes). Order has been cancelled and stock released. Please try again.';
 						// Clear stored data
 						setTimeout(() => {
 							localStorage.removeItem('pendingOrderId');
@@ -646,13 +690,24 @@
 				}, 15 * 60 * 1000); // 15 minutes
 				
 				// Check if PayPal window is closed manually
-				paypalCheckInterval = setInterval(() => {
+				paypalCheckInterval = setInterval(async () => {
 					if (paypalWindow && paypalWindow.closed) {
-						// Window was closed manually
+						// Window was closed manually - cancel order and release stock
 						clearInterval(paypalCheckInterval);
 						paypalCheckInterval = null;
 						closePayPalLoading();
-						error = 'Payment window was closed. If you completed the payment, please check your orders page.';
+						
+						// Cancel order and release reserved stock
+						if (currentOrderId) {
+							try {
+								await ordersApi.cancelOrder(currentOrderId);
+								console.log('[checkout] Order cancelled due to PayPal window closure:', currentOrderId);
+							} catch (cancelError) {
+								console.error('[checkout] Failed to cancel order on window closure:', cancelError);
+							}
+						}
+						
+						error = 'Payment window was closed. Order has been cancelled and stock released. If you completed the payment, please check your orders page.';
 						// Clear stored data after a delay
 						setTimeout(() => {
 							localStorage.removeItem('pendingOrderId');

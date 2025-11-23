@@ -23,10 +23,11 @@ import { executeTransaction } from '../../shared/utils/database.js';
  * Get stock for a product
  * @param {string} productId - Product ID
  * @param {D1Database} db - Database instance
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<Object>} Stock data
  */
-export async function getProductStock(productId, db) {
-  const stock = await getStock(db, productId);
+export async function getProductStock(productId, db, reservedStockDO = null) {
+  const stock = await getStock(db, productId, reservedStockDO);
   if (!stock) {
     return {
       productId,
@@ -57,10 +58,11 @@ export async function getProductStock(productId, db) {
  * Get stocks for multiple products
  * @param {string[]} productIds - Array of product IDs
  * @param {D1Database} db - Database instance
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<Object>} Map of productId to stock
  */
-export async function getProductStocks(productIds, db) {
-  const stocks = await getStocks(db, productIds);
+export async function getProductStocks(productIds, db, reservedStockDO = null) {
+  const stocks = await getStocks(db, productIds, reservedStockDO);
   
   const stockMap = {};
   stocks.forEach(stock => {
@@ -91,14 +93,16 @@ export async function getProductStocks(productIds, db) {
  * @param {string} productId - Product ID
  * @param {number} quantity - New stock quantity
  * @param {D1Database} db - Database instance
+ * @param {KVNamespace} cache - Cache for invalidation (optional)
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<Object>} Updated stock data
  */
-export async function updateProductStock(productId, quantity, db, cache = null) {
+export async function updateProductStock(productId, quantity, db, cache = null, reservedStockDO = null) {
   if (quantity < 0) {
     throw new Error('Stock quantity cannot be negative');
   }
   
-  const existing = await getStock(db, productId);
+  const existing = await getStock(db, productId, reservedStockDO);
   if (!existing) {
     // Create new stock entry
     const result = await setStock(db, productId, quantity);
@@ -133,11 +137,13 @@ export async function updateProductStock(productId, quantity, db, cache = null) 
  * @param {string} productId - Product ID
  * @param {number} quantity - Quantity to reduce
  * @param {D1Database} db - Database instance
+ * @param {KVNamespace} cache - Cache for invalidation (optional)
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<boolean>} True if reduced successfully
  */
-export async function reduceProductStock(productId, quantity, db, cache = null) {
-  // Get current stock info
-  const stock = await getStock(db, productId);
+export async function reduceProductStock(productId, quantity, db, cache = null, reservedStockDO = null, orderId = null) {
+  // Get current stock info (with reserved from DO)
+  const stock = await getStock(db, productId, reservedStockDO);
   if (!stock) {
     throw new ConflictError(`Product ${productId} not found in inventory`);
   }
@@ -156,10 +162,10 @@ export async function reduceProductStock(productId, quantity, db, cache = null) 
   }
   
   try {
-    const reduced = await reduceStock(db, productId, quantity);
+    const reduced = await reduceStock(db, productId, quantity, null, reservedStockDO, orderId);
     if (!reduced) {
       // Check stock again to provide better error message
-      const currentStock = await getStock(db, productId);
+      const currentStock = await getStock(db, productId, reservedStockDO);
       const currentAvailable = currentStock ? currentStock.quantity - currentStock.reserved_quantity : 0;
       throw new ConflictError(`Failed to reduce stock. Current available: ${currentAvailable}, Requested: ${quantity}. Stock may have been reduced by another order.`);
     }
@@ -194,20 +200,32 @@ export async function reduceProductStock(productId, quantity, db, cache = null) 
 }
 
 /**
- * Reserve stock (for cart)
+ * Reserve stock (for orders)
  * @param {string} productId - Product ID
  * @param {number} quantity - Quantity to reserve
  * @param {D1Database} db - Database instance
+ * @param {KVNamespace} cache - Cache for invalidation (optional)
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (required)
+ * @param {string} orderId - Order ID (required for TTL tracking)
+ * @param {number} ttlMinutes - Time to live in minutes (default: 15)
  * @returns {Promise<boolean>} True if reserved successfully
  */
-export async function reserveProductStock(productId, quantity, db, cache = null) {
-  const available = await getAvailableStock(db, productId);
+export async function reserveProductStock(productId, quantity, db, cache = null, reservedStockDO = null, orderId = null, ttlMinutes = 15) {
+  if (!reservedStockDO) {
+    throw new Error('ReservedStockDO binding is required for stock reservation');
+  }
+  
+  if (!orderId) {
+    throw new Error('orderId is required for stock reservation');
+  }
+  
+  const available = await getAvailableStock(db, productId, reservedStockDO);
   
   if (available < quantity) {
     throw new ConflictError(`Insufficient stock. Available: ${available}, Requested: ${quantity}`);
   }
   
-  const reserved = await reserveStock(db, productId, quantity);
+  const reserved = await reserveStock(db, productId, quantity, reservedStockDO, orderId, ttlMinutes);
   if (!reserved) {
     throw new ConflictError('Failed to reserve stock. Insufficient quantity available.');
   }
@@ -223,12 +241,19 @@ export async function reserveProductStock(productId, quantity, db, cache = null)
 /**
  * Release reserved stock
  * @param {string} productId - Product ID
- * @param {number} quantity - Quantity to release
+ * @param {string} orderId - Order ID (preferred) or quantity (backward compatibility)
  * @param {D1Database} db - Database instance
+ * @param {KVNamespace} cache - Cache for invalidation (optional)
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (required)
+ * @param {number} quantity - Quantity to release (only if orderId not provided)
  * @returns {Promise<boolean>} True if released successfully
  */
-export async function releaseProductStock(productId, quantity, db, cache = null) {
-  const released = await releaseReservedStock(db, productId, quantity);
+export async function releaseProductStock(productId, orderId, db, cache = null, reservedStockDO = null, quantity = null) {
+  if (!reservedStockDO) {
+    throw new Error('ReservedStockDO binding is required for stock release');
+  }
+  
+  const released = await releaseReservedStock(db, productId, orderId, reservedStockDO, quantity);
   
   // Invalidate shipping cache - releasing reserved stock affects available stock for shipping
   if (cache) {

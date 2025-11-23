@@ -5,7 +5,7 @@
 import * as fulfillmentService from '../services/fulfillmentService.js';
 import { validateApiKey } from '../../shared/utils/interWorker.js';
 import { AuthenticationError, ValidationError, ConflictError } from '../../shared/utils/errors.js';
-import { updateStockSchema, reduceStockSchema, calculateShippingSchema, calculateBatchShippingSchema } from '../validation/fulfillmentValidation.js';
+import { updateStockSchema, reduceStockSchema, reserveStockSchema, releaseStockSchema, calculateShippingSchema, calculateBatchShippingSchema } from '../validation/fulfillmentValidation.js';
 import { sendLog } from '../../shared/utils/logger.js';
 
 /**
@@ -61,7 +61,11 @@ export async function validateWorkerRequest(request, env) {
 export async function getStock(request, env) {
   const { productId } = request.params;
   
-  const stock = await fulfillmentService.getProductStock(productId, env.fulfillment_db);
+  const stock = await fulfillmentService.getProductStock(
+    productId, 
+    env.fulfillment_db,
+    env.reserved_stock_do // Pass DO binding
+  );
   
   return new Response(
     JSON.stringify(stock),
@@ -88,7 +92,11 @@ export async function getStocks(request, env) {
     throw new ValidationError('At least one productId is required');
   }
   
-  const stocks = await fulfillmentService.getProductStocks(ids, env.fulfillment_db);
+  const stocks = await fulfillmentService.getProductStocks(
+    ids, 
+    env.fulfillment_db,
+    env.reserved_stock_do // Pass DO binding
+  );
   
   return new Response(
     JSON.stringify(stocks),
@@ -116,7 +124,8 @@ export async function updateStock(request, env) {
     productId,
     value.quantity,
     env.fulfillment_db,
-    env.SHIPPING_CACHE // Pass KV cache for invalidation
+    env.SHIPPING_CACHE, // Pass KV cache for invalidation
+    env.reserved_stock_do // Pass DO binding
   );
   
   return new Response(
@@ -152,11 +161,16 @@ export async function reduceStock(request, env, ctx = null) {
       worker: 'fulfillment-worker',
     }, apiKey, ctx);
     
+    // Get orderId from request body if available
+    const orderId = value.orderId || null;
+    
     await fulfillmentService.reduceProductStock(
       productId,
       value.quantity,
       env.fulfillment_db,
-      env.SHIPPING_CACHE // Pass KV cache for invalidation
+      env.SHIPPING_CACHE, // Pass KV cache for invalidation
+      env.reserved_stock_do, // Pass DO binding
+      orderId // Pass orderId if available
     );
     
     // Log successful stock reduction
@@ -312,14 +326,14 @@ export async function calculateBatchShipping(request, env) {
 }
 
 /**
- * Reserve stock (for cart)
+ * Reserve stock (for orders)
  */
 export async function reserveStock(request, env) {
   const { productId } = request.params;
   const body = await request.json();
   
-  // Validate
-  const { error, value } = reduceStockSchema.validate(body);
+  // Validate using reserveStockSchema
+  const { error, value } = reserveStockSchema.validate(body);
   if (error) {
     throw new ValidationError(error.details[0].message, error.details);
   }
@@ -328,7 +342,10 @@ export async function reserveStock(request, env) {
     productId,
     value.quantity,
     env.fulfillment_db,
-    env.SHIPPING_CACHE // Pass KV cache for invalidation
+    env.SHIPPING_CACHE, // Pass KV cache for invalidation
+    env.reserved_stock_do, // Pass DO binding
+    value.orderId, // Pass orderId for TTL tracking
+    value.ttlMinutes // Pass TTL (defaults to 15 if not provided)
   );
   
   return new Response(
@@ -341,23 +358,112 @@ export async function reserveStock(request, env) {
 }
 
 /**
+ * Get reserved stock status for a product (inter-worker)
+ */
+export async function getReservedStockStatus(request, env) {
+  const { productId } = request.params;
+  
+  if (!env.reserved_stock_do) {
+    throw new Error('ReservedStockDO binding not available');
+  }
+  
+  const { getReservedStockStatus } = await import('../utils/reservedStockDO.js');
+  const status = await getReservedStockStatus(env.reserved_stock_do, productId);
+  
+  return new Response(
+    JSON.stringify(status),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
+ * Get all reservations for a product (including expired, for debugging)
+ */
+export async function getAllReservations(request, env) {
+  const { productId } = request.params;
+  
+  if (!env.reserved_stock_do) {
+    throw new Error('ReservedStockDO binding not available');
+  }
+  
+  const { getAllReservations } = await import('../utils/reservedStockDO.js');
+  const data = await getAllReservations(env.reserved_stock_do, productId);
+  
+  return new Response(
+    JSON.stringify(data),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
+ * Clean up expired reservations for a product
+ */
+export async function cleanupReservations(request, env) {
+  const { productId } = request.params;
+  
+  if (!env.reserved_stock_do) {
+    throw new Error('ReservedStockDO binding not available');
+  }
+  
+  const { cleanupExpiredReservations } = await import('../utils/reservedStockDO.js');
+  const result = await cleanupExpiredReservations(env.reserved_stock_do, productId);
+  
+  return new Response(
+    JSON.stringify(result),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
  * Release reserved stock
  */
 export async function releaseStock(request, env) {
   const { productId } = request.params;
-  const body = await request.json();
   
-  // Validate
-  const { error, value } = reduceStockSchema.validate(body);
-  if (error) {
-    throw new ValidationError(error.details[0].message, error.details);
+  // Parse body - handle empty body gracefully
+  let body = {};
+  try {
+    // Check if request has a body by checking content-length
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && parseInt(contentLength) > 0) {
+      body = await request.json();
+    }
+  } catch (error) {
+    // If body is invalid JSON, throw a clear error
+    if (error instanceof SyntaxError) {
+      throw new ValidationError('Request body must be valid JSON with either orderId or quantity');
+    }
+    throw error;
   }
+  
+  // Validate using releaseStockSchema
+  const { error, value } = releaseStockSchema.validate(body);
+  if (error) {
+    throw new ValidationError(error.details[0].message || 'Either orderId or quantity must be provided', error.details);
+  }
+  
+  console.log(`[fulfillment-controller] Releasing stock for product ${productId}, orderId: ${value.orderId}, quantity: ${value.quantity}`);
+  
+  // Pass orderId if provided, otherwise pass null and use quantity
+  const orderId = value.orderId || null;
+  const quantity = orderId ? null : (value.quantity || null);
   
   await fulfillmentService.releaseProductStock(
     productId,
-    value.quantity,
+    orderId,
     env.fulfillment_db,
-    env.SHIPPING_CACHE // Pass KV cache for invalidation
+    env.SHIPPING_CACHE, // Pass KV cache for invalidation
+    env.reserved_stock_do, // Pass DO binding
+    quantity
   );
   
   return new Response(

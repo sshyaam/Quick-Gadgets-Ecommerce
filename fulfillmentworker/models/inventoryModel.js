@@ -1,23 +1,32 @@
 /**
  * Inventory model for fulfillment worker
+ * Uses Durable Objects for reserved stock to prevent race conditions
+ * D1 stores actual inventory quantities, DO stores reserved quantities
  */
 
 import { randomUUID } from 'crypto';
+import { 
+  reserveStockDO, 
+  releaseStockDO, 
+  reduceReservedStockDO, 
+  getReservedStockStatus 
+} from '../utils/reservedStockDO.js';
 
 /**
  * Get stock for a product (aggregated across all warehouses)
+ * Reserved quantity comes from DO, actual quantity from D1
  * @param {D1Database} db - Database instance
  * @param {string} productId - Product ID
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<Object|null>} Stock data or null
  */
-export async function getStock(db, productId) {
-  // Aggregate stock across all warehouses
+export async function getStock(db, productId, reservedStockDO = null) {
+  // Aggregate actual stock across all warehouses from D1
   const result = await db
     .prepare(
       `SELECT 
         product_id,
         SUM(quantity) as quantity,
-        SUM(reserved_quantity) as reserved_quantity,
         MAX(updated_at) as updated_at
        FROM inventory 
        WHERE product_id = ? AND deleted_at IS NULL
@@ -26,16 +35,42 @@ export async function getStock(db, productId) {
     .bind(productId)
     .first();
   
-  return result || null;
+  if (!result) {
+    return null;
+  }
+  
+  // Get reserved quantity from DO (if available)
+  // This will automatically trigger cleanup of expired reservations
+  let reservedQuantity = 0;
+  if (reservedStockDO) {
+    try {
+      // Getting status triggers cleanup automatically (via DO fetch handler)
+      const reservedStatus = await getReservedStockStatus(reservedStockDO, productId);
+      reservedQuantity = reservedStatus.reserved || 0;
+    } catch (error) {
+      console.warn(`[inventory-model] Failed to get reserved stock from DO for ${productId}:`, error.message);
+      // Fallback: if DO is not available, reserved_quantity is 0
+      reservedQuantity = 0;
+    }
+  }
+  
+  return {
+    product_id: result.product_id,
+    quantity: result.quantity,
+    reserved_quantity: reservedQuantity,
+    updated_at: result.updated_at,
+  };
 }
 
 /**
  * Get stocks for multiple products (aggregated across all warehouses)
+ * Reserved quantities come from DO, actual quantities from D1
  * @param {D1Database} db - Database instance
  * @param {string[]} productIds - Array of product IDs
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<Object[]>} Array of stock data
  */
-export async function getStocks(db, productIds) {
+export async function getStocks(db, productIds, reservedStockDO = null) {
   if (!productIds || productIds.length === 0) {
     return [];
   }
@@ -46,7 +81,6 @@ export async function getStocks(db, productIds) {
       `SELECT 
         product_id,
         SUM(quantity) as quantity,
-        SUM(reserved_quantity) as reserved_quantity,
         MAX(updated_at) as updated_at
        FROM inventory 
        WHERE product_id IN (${placeholders}) AND deleted_at IS NULL
@@ -55,7 +89,30 @@ export async function getStocks(db, productIds) {
     .bind(...productIds)
     .all();
   
-  return result.results || [];
+  const stocks = result.results || [];
+  
+  // Get reserved quantities from DO for all products
+  if (reservedStockDO) {
+    const reservedPromises = stocks.map(async (stock) => {
+      try {
+        const reservedStatus = await getReservedStockStatus(reservedStockDO, stock.product_id);
+        stock.reserved_quantity = reservedStatus.reserved || 0;
+      } catch (error) {
+        console.warn(`[inventory-model] Failed to get reserved stock from DO for ${stock.product_id}:`, error.message);
+        stock.reserved_quantity = 0;
+      }
+      return stock;
+    });
+    
+    await Promise.all(reservedPromises);
+  } else {
+    // If DO not available, set reserved_quantity to 0
+    stocks.forEach(stock => {
+      stock.reserved_quantity = 0;
+    });
+  }
+  
+  return stocks;
 }
 
 /**
@@ -148,15 +205,18 @@ export async function getStockFromWarehouse(db, productId, warehouseId) {
 
 /**
  * Reduce stock (for order fulfillment) - reduces from specific warehouse(s) with stock
+ * Also reduces reserved stock from DO when reducing actual stock
  * @param {D1Database} db - Database instance
  * @param {string} productId - Product ID
  * @param {number} quantity - Quantity to reduce
  * @param {string} warehouseId - Optional: specific warehouse ID to reduce from
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<boolean>} True if reduced successfully
  */
-export async function reduceStock(db, productId, quantity, warehouseId = null) {
+export async function reduceStock(db, productId, quantity, warehouseId = null, reservedStockDO = null, orderId = null) {
   // First, check total available stock across all warehouses
-  const totalStock = await getStock(db, productId);
+  // Get reserved from DO if available
+  const totalStock = await getStock(db, productId, reservedStockDO);
   
   if (!totalStock) {
     const error = new Error(`Product ${productId} not found in inventory`);
@@ -164,43 +224,11 @@ export async function reduceStock(db, productId, quantity, warehouseId = null) {
     throw error;
   }
   
-  // Fix data inconsistencies: if reserved_quantity > quantity in any warehouse, cap it
-  const allInventory = await db
-    .prepare(
-      `SELECT inventory_id, warehouse_id, quantity, reserved_quantity
-       FROM inventory 
-       WHERE product_id = ? AND deleted_at IS NULL`
-    )
-    .bind(productId)
-    .all();
-  
-  for (const inv of allInventory.results || []) {
-    if (inv.reserved_quantity > inv.quantity) {
-      console.warn(`[inventory-model] Data inconsistency detected for ${productId} in warehouse ${inv.warehouse_id}: reserved_quantity (${inv.reserved_quantity}) > quantity (${inv.quantity}). Fixing...`);
-      await db
-        .prepare(
-          `UPDATE inventory 
-           SET reserved_quantity = ?,
-               updated_at = ? 
-           WHERE inventory_id = ? AND deleted_at IS NULL`
-        )
-        .bind(inv.quantity, new Date().toISOString(), inv.inventory_id)
-        .run();
-    }
-  }
-  
-  // Re-fetch total stock after fixing inconsistencies
-  const fixedTotalStock = await getStock(db, productId);
-  if (!fixedTotalStock) {
-    const error = new Error(`Product ${productId} not found in inventory`);
-    error.name = 'NotFoundError';
-    throw error;
-  }
-  const totalAvailable = (fixedTotalStock.quantity || fixedTotalStock.qty || 0) - (fixedTotalStock.reserved_quantity || 0);
+  const totalAvailable = (totalStock.quantity || 0) - (totalStock.reserved_quantity || 0);
   
   if (totalAvailable < quantity) {
-    const totalQty = fixedTotalStock.quantity || fixedTotalStock.qty || 0;
-    const reservedQty = fixedTotalStock.reserved_quantity || 0;
+    const totalQty = totalStock.quantity || 0;
+    const reservedQty = totalStock.reserved_quantity || 0;
     const error = new Error(`Insufficient available stock. Available: ${totalAvailable}, Requested: ${quantity}, Total: ${totalQty}, Reserved: ${reservedQty}`);
     error.name = 'ConflictError';
     throw error;
@@ -210,28 +238,35 @@ export async function reduceStock(db, productId, quantity, warehouseId = null) {
   if (warehouseId) {
     const warehouseStock = await getStockFromWarehouse(db, productId, warehouseId);
     if (warehouseStock) {
-      const warehouseAvailable = warehouseStock.quantity - warehouseStock.reserved_quantity;
+      // Calculate available: warehouse quantity - (product-level reserved from DO)
+      const warehouseAvailable = warehouseStock.quantity - (totalStock.reserved_quantity || 0);
       if (warehouseAvailable >= quantity) {
-        // Reduce from this specific warehouse
+        // Reduce from this specific warehouse (only update quantity, not reserved_quantity in D1)
         const newQuantity = Math.max(0, warehouseStock.quantity - quantity);
-        const newReservedQuantity = Math.max(0, warehouseStock.reserved_quantity - quantity);
-        const finalReservedQuantity = Math.min(newReservedQuantity, newQuantity);
         
-        // Update with atomic check: ensure we have enough available stock
+        // Update with atomic check
         const result = await db
           .prepare(
             `UPDATE inventory 
              SET quantity = ?,
-                 reserved_quantity = ?,
                  updated_at = ? 
              WHERE inventory_id = ? 
                AND deleted_at IS NULL 
-               AND (quantity - reserved_quantity) >= ?`
+               AND quantity >= ?`
           )
-          .bind(newQuantity, finalReservedQuantity, new Date().toISOString(), warehouseStock.inventory_id, quantity)
+          .bind(newQuantity, new Date().toISOString(), warehouseStock.inventory_id, quantity)
           .run();
         
         if (result.success && result.meta.changes > 0) {
+          // Also reduce reserved stock from DO
+          if (reservedStockDO) {
+            try {
+              await reduceReservedStockDO(reservedStockDO, productId, quantity);
+            } catch (error) {
+              console.warn(`[inventory-model] Failed to reduce reserved stock from DO: ${error.message}`);
+              // Continue - the actual stock was reduced, reserved stock reduction is best-effort
+            }
+          }
           console.log(`[inventory-model] Reduced ${quantity} stock from warehouse ${warehouseId} for product ${productId}`);
           return true;
         }
@@ -239,52 +274,53 @@ export async function reduceStock(db, productId, quantity, warehouseId = null) {
     }
   }
   
-  // Find warehouses with available stock, ordered by available quantity (descending)
+  // Find warehouses with stock, ordered by quantity (descending)
+  // Note: We use quantity only since reserved is tracked per-product in DO
   const warehousesWithStock = await db
     .prepare(
-      `SELECT inventory_id, warehouse_id, quantity, reserved_quantity,
-              (quantity - reserved_quantity) as available
+      `SELECT inventory_id, warehouse_id, quantity
        FROM inventory 
        WHERE product_id = ? 
          AND deleted_at IS NULL 
-         AND (quantity - reserved_quantity) > 0
-       ORDER BY available DESC`
+         AND quantity > 0
+       ORDER BY quantity DESC`
     )
     .bind(productId)
     .all();
   
   if (!warehousesWithStock.results || warehousesWithStock.results.length === 0) {
-    const error = new Error(`No warehouses with available stock for product ${productId}`);
+    const error = new Error(`No warehouses with stock for product ${productId}`);
     error.name = 'ConflictError';
     throw error;
   }
   
-  // Reduce stock from warehouses, starting with the one with most available stock
+  // Reduce stock from warehouses, starting with the one with most stock
+  // We've already verified total available stock above
   let remainingToReduce = quantity;
   const updatedWarehouses = [];
   
   for (const warehouse of warehousesWithStock.results) {
     if (remainingToReduce <= 0) break;
     
-    const available = warehouse.quantity - warehouse.reserved_quantity;
-    const toReduceFromThis = Math.min(remainingToReduce, available);
+    // Calculate available for this warehouse considering product-level reserved stock
+    const warehouseAvailable = Math.max(0, warehouse.quantity - (totalStock.reserved_quantity || 0));
+    const toReduceFromThis = Math.min(remainingToReduce, warehouseAvailable);
+    
+    if (toReduceFromThis <= 0) continue;
     
     const newQuantity = Math.max(0, warehouse.quantity - toReduceFromThis);
-    const newReservedQuantity = Math.max(0, warehouse.reserved_quantity - toReduceFromThis);
-    const finalReservedQuantity = Math.min(newReservedQuantity, newQuantity);
     
-    // Update with atomic check: ensure we have enough available stock
+    // Update with atomic check
     const result = await db
       .prepare(
         `UPDATE inventory 
          SET quantity = ?,
-             reserved_quantity = ?,
              updated_at = ? 
          WHERE inventory_id = ? 
            AND deleted_at IS NULL 
-           AND (quantity - reserved_quantity) >= ?`
+           AND quantity >= ?`
       )
-      .bind(newQuantity, finalReservedQuantity, new Date().toISOString(), warehouse.inventory_id, toReduceFromThis)
+      .bind(newQuantity, new Date().toISOString(), warehouse.inventory_id, toReduceFromThis)
       .run();
     
     if (result.success && result.meta.changes > 0) {
@@ -300,126 +336,112 @@ export async function reduceStock(db, productId, quantity, warehouseId = null) {
     throw error;
   }
   
+  // Also reduce reserved stock from DO (after successfully reducing actual stock)
+  // If orderId is provided, use it; otherwise use quantity (backward compatibility)
+  if (reservedStockDO) {
+    try {
+      await reduceReservedStockDO(reservedStockDO, productId, orderId, quantity);
+      console.log(`[inventory-model] Reduced reserved stock from DO for product ${productId}, orderId: ${orderId || 'quantity: ' + quantity}`);
+    } catch (error) {
+      console.warn(`[inventory-model] Failed to reduce reserved stock from DO: ${error.message}`);
+      // Continue - the actual stock was reduced, reserved stock reduction is best-effort
+    }
+  }
+  
   console.log(`[inventory-model] Successfully reduced ${quantity} stock for product ${productId} from ${updatedWarehouses.length} warehouse(s): ${updatedWarehouses.join(', ')}`);
   return true;
 }
 
 /**
- * Reserve stock (for cart) - reserves from specific warehouse(s) with stock
+ * Reserve stock (for orders) - uses DO for atomic reservation with TTL
+ * Checks D1 for available stock, then reserves in DO atomically
  * @param {D1Database} db - Database instance
  * @param {string} productId - Product ID
  * @param {number} quantity - Quantity to reserve
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock
+ * @param {string} orderId - Order ID (required for TTL tracking)
+ * @param {number} ttlMinutes - Time to live in minutes (default: 15)
  * @returns {Promise<boolean>} True if reserved successfully
  */
-export async function reserveStock(db, productId, quantity) {
-  // Find warehouses with available stock, ordered by available quantity (descending)
-  const warehousesWithStock = await db
-    .prepare(
-      `SELECT inventory_id, warehouse_id, quantity, reserved_quantity,
-              (quantity - reserved_quantity) as available
-       FROM inventory 
-       WHERE product_id = ? 
-         AND deleted_at IS NULL 
-         AND (quantity - reserved_quantity) > 0
-       ORDER BY available DESC`
-    )
-    .bind(productId)
-    .all();
+export async function reserveStock(db, productId, quantity, reservedStockDO, orderId = null, ttlMinutes = 15) {
+  if (!reservedStockDO) {
+    throw new Error('ReservedStockDO binding is required for stock reservation');
+  }
   
-  if (!warehousesWithStock.results || warehousesWithStock.results.length === 0) {
+  if (!orderId) {
+    throw new Error('orderId is required for stock reservation');
+  }
+  
+  // First, check total available stock from D1
+  const totalStock = await getStock(db, productId, reservedStockDO);
+  
+  if (!totalStock) {
     return false;
   }
   
-  // Reserve stock from warehouses, starting with the one with most available stock
-  let remainingToReserve = quantity;
+  const available = totalStock.quantity - totalStock.reserved_quantity;
   
-  for (const warehouse of warehousesWithStock.results) {
-    if (remainingToReserve <= 0) break;
-    
-    const available = warehouse.quantity - warehouse.reserved_quantity;
-    const toReserveFromThis = Math.min(remainingToReserve, available);
-    
-    const result = await db
-      .prepare(
-        `UPDATE inventory 
-         SET reserved_quantity = reserved_quantity + ?,
-             updated_at = ? 
-         WHERE inventory_id = ? 
-           AND deleted_at IS NULL 
-           AND (quantity - reserved_quantity) >= ?`
-      )
-      .bind(toReserveFromThis, new Date().toISOString(), warehouse.inventory_id, toReserveFromThis)
-      .run();
-    
-    if (result.success && result.meta.changes > 0) {
-      remainingToReserve -= toReserveFromThis;
-    }
+  if (available < quantity) {
+    console.log(`[inventory-model] Insufficient stock to reserve. Available: ${available}, Requested: ${quantity}`);
+    return false;
   }
   
-  return remainingToReserve === 0;
+  // Reserve in DO atomically (this prevents race conditions)
+  try {
+    const result = await reserveStockDO(reservedStockDO, productId, quantity, orderId, ttlMinutes);
+    if (result.success) {
+      console.log(`[inventory-model] Reserved ${quantity} stock for product ${productId}, order ${orderId} via DO. Total reserved: ${result.totalReserved}, expires at ${result.expiresAt}`);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error(`[inventory-model] Failed to reserve stock via DO for ${productId}:`, error);
+    return false;
+  }
 }
 
 /**
- * Release reserved stock - releases from specific warehouse(s) with reserved stock
- * @param {D1Database} db - Database instance
+ * Release reserved stock - uses DO for atomic release
+ * @param {D1Database} db - Database instance (not used, kept for API compatibility)
  * @param {string} productId - Product ID
- * @param {number} quantity - Quantity to release
+ * @param {string} orderId - Order ID (preferred) or quantity (backward compatibility)
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock
+ * @param {number} quantity - Quantity to release (only if orderId not provided)
  * @returns {Promise<boolean>} True if released successfully
  */
-export async function releaseReservedStock(db, productId, quantity) {
-  // Find warehouses with reserved stock, ordered by reserved quantity (descending)
-  const warehousesWithReserved = await db
-    .prepare(
-      `SELECT inventory_id, warehouse_id, quantity, reserved_quantity
-       FROM inventory 
-       WHERE product_id = ? 
-         AND deleted_at IS NULL 
-         AND reserved_quantity > 0
-       ORDER BY reserved_quantity DESC`
-    )
-    .bind(productId)
-    .all();
-  
-  if (!warehousesWithReserved.results || warehousesWithReserved.results.length === 0) {
-    return false;
+export async function releaseReservedStock(db, productId, orderId, reservedStockDO, quantity = null) {
+  if (!reservedStockDO) {
+    throw new Error('ReservedStockDO binding is required for stock release');
   }
   
-  // Release stock from warehouses, starting with the one with most reserved stock
-  let remainingToRelease = quantity;
-  
-  for (const warehouse of warehousesWithReserved.results) {
-    if (remainingToRelease <= 0) break;
-    
-    const toReleaseFromThis = Math.min(remainingToRelease, warehouse.reserved_quantity);
-    const newReservedQuantity = Math.max(0, warehouse.reserved_quantity - toReleaseFromThis);
-    
-    const result = await db
-      .prepare(
-        `UPDATE inventory 
-         SET reserved_quantity = ?,
-             updated_at = ? 
-         WHERE inventory_id = ? 
-           AND deleted_at IS NULL`
-      )
-      .bind(newReservedQuantity, new Date().toISOString(), warehouse.inventory_id)
-      .run();
-    
-    if (result.success && result.meta.changes > 0) {
-      remainingToRelease -= toReleaseFromThis;
+  // Release from DO atomically
+  try {
+    const result = await releaseStockDO(reservedStockDO, productId, orderId, quantity);
+    if (result.success) {
+      console.log(`[inventory-model] Released reserved stock for product ${productId}, order ${orderId || 'quantity: ' + quantity} via DO. Total reserved: ${result.totalReserved}`);
+      return true;
     }
+    return false;
+  } catch (error) {
+    console.error(`[inventory-model] Failed to release stock via DO for ${productId}:`, error);
+    // If error is about insufficient reserved stock, return false
+    if (error.message && error.message.includes('Cannot release')) {
+      return false;
+    }
+    throw error;
   }
-  
-  return remainingToRelease === 0;
 }
 
 /**
  * Get available stock (quantity - reserved_quantity)
+ * Reserved quantity comes from DO, actual quantity from D1
  * @param {D1Database} db - Database instance
  * @param {string} productId - Product ID
+ * @param {DurableObjectNamespace} reservedStockDO - DO binding for reserved stock (optional)
  * @returns {Promise<number>} Available stock quantity
  */
-export async function getAvailableStock(db, productId) {
-  const stock = await getStock(db, productId);
+export async function getAvailableStock(db, productId, reservedStockDO = null) {
+  const stock = await getStock(db, productId, reservedStockDO);
   if (!stock) {
     return 0;
   }

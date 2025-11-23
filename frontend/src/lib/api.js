@@ -434,6 +434,12 @@ export const ordersApi = {
 			method: 'POST',
 			body: JSON.stringify({ productId, rating, comment })
 		});
+	},
+
+	async cancelOrder(orderId) {
+		return apiRequest(`${WORKER_URLS.orders}/order/${orderId}/cancel`, {
+			method: 'POST'
+		});
 	}
 };
 

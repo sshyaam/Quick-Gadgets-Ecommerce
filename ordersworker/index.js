@@ -43,6 +43,14 @@ router.post('/orders/capture', async (request, env, ctx) => {
   return await ordersController.capturePayment(request, env, ctx);
 });
 
+router.post('/order/:orderId/cancel', async (request, env, ctx) => {
+  const authResult = await authController.authenticate(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  return await ordersController.cancelOrder(request, env, ctx);
+});
+
 router.post('/order/:orderId/rate', async (request, env) => {
   const authResult = await authController.authenticate(request, env);
   if (authResult instanceof Response) {
