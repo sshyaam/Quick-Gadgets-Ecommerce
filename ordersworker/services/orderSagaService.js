@@ -1158,3 +1158,532 @@ export async function cancelOrderSaga(orderId, env, ctx = null) {
   }
 }
 
+/**
+ * Create COD (Cash on Delivery) order - skips payment and marks as completed
+ * Steps:
+ * 1. Validate cart and get cart data
+ * 2. Calculate shipping
+ * 3. Create order record (status: processing)
+ * 4. Reserve stock
+ * 5. Reduce stock (immediately, since COD orders are confirmed)
+ * 6. Clear cart
+ * 7. Update order status to completed
+ * 
+ * Returns: { orderId, status: 'completed' }
+ */
+export async function createCODOrderSaga(
+  userId,
+  orderData,
+  env,
+  ctx = null,
+  request = null
+) {
+  const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;
+  const apiKey = env.INTER_WORKER_API_KEY;
+  const tracer = getTracer('orders-worker');
+  const cfRayId = request ? getCfRayId(request) : null;
+  
+  // Create main span for COD order creation saga
+  const sagaSpan = tracer.startSpan('order.create_cod_saga');
+  if (cfRayId) {
+    sagaSpan.setAttribute('cf.ray_id', cfRayId);
+  }
+  sagaSpan.setAttribute('user.id', userId);
+  sagaSpan.setAttribute('payment.method', 'cod');
+  addSpanLog(sagaSpan, 'COD order creation saga started', { userId }, request);
+  
+  const sagaState = {
+    orderId: null,
+    cartId: null,
+    stockReserved: [],
+    stockReduced: [],
+    cartCleared: false,
+    orderCreated: false,
+  };
+  
+  const compensationSteps = [];
+  
+  try {
+    // Log COD order creation start
+    await sendLog(logWorkerBindingOrUrl, 'event', 'COD order creation started', {
+      userId,
+      worker: 'orders-worker',
+    }, apiKey, ctx);
+    
+    console.log('[cod-order-saga] Starting COD order creation for user:', userId);
+    
+    // Step 1: Get and validate cart
+    if (!env.cart_worker) {
+      throw new Error('Cart worker service binding not available');
+    }
+    
+    if (!orderData.accessToken) {
+      throw new ConflictError('Access token required for cart operations');
+    }
+    
+    const cartResponse = await traceExternalCall(
+      'cart.get_cart',
+      async () => {
+        const cartRequest = new Request('https://workers.dev/cart', {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+            'Authorization': `Bearer ${orderData.accessToken}`,
+            'Cookie': `accessToken=${orderData.accessToken}`,
+          },
+        });
+        
+        const { injectTraceContext } = await import('../../shared/utils/otel.js');
+        injectTraceContext(cartRequest.headers);
+        
+        const response = await env.cart_worker.fetch(cartRequest);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new ConflictError('Failed to get cart');
+        }
+        
+        return response;
+      },
+      {
+        url: 'https://workers.dev/cart',
+        method: 'GET',
+        system: 'cart-worker',
+        operation: 'get_cart',
+      },
+      request
+    );
+    
+    const cart = await cartResponse.json();
+    sagaState.cartId = cart.cartId;
+    
+    if (!cart.items || cart.items.length === 0) {
+      throw new ConflictError('Cart is empty');
+    }
+    
+    // Validate cart
+    const validation = await traceExternalCall(
+      'cart.validate_cart',
+      async () => {
+        const validateRequest = new Request('https://workers.dev/cart/validate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+            'Authorization': `Bearer ${orderData.accessToken}`,
+            'Cookie': `accessToken=${orderData.accessToken}`,
+          },
+          body: JSON.stringify({ cart }),
+        });
+        
+        const { injectTraceContext } = await import('../../shared/utils/otel.js');
+        injectTraceContext(validateRequest.headers);
+        
+        const response = await env.cart_worker.fetch(validateRequest);
+        
+        if (!response.ok) {
+          let errorText;
+          try {
+            const errorData = await response.json();
+            errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+          } catch (e) {
+            errorText = await response.text();
+          }
+          console.error('[cod-order-saga] Cart validation request failed:', response.status, errorText);
+          throw new ConflictError(`Cart validation failed: ${errorText}`);
+        }
+        
+        return response;
+      },
+      {
+        url: 'https://workers.dev/cart/validate',
+        method: 'POST',
+        system: 'cart-worker',
+        operation: 'validate_cart',
+      },
+      request
+    );
+    
+    const validationResult = await validation.json();
+    if (!validationResult.valid) {
+      throw new ConflictError(validationResult.message || 'Cart validation failed');
+    }
+    
+    // Step 2: Calculate shipping
+    if (!env.fulfillment_worker) {
+      throw new Error('Fulfillment worker service binding not available');
+    }
+    if (!env.catalog_worker) {
+      throw new Error('Catalog worker service binding not available');
+    }
+    
+    // First, fetch product details to get categories
+    const productDetailsPromises = cart.items.map(async (item) => {
+      return await traceExternalCall(
+        `catalog.get_product.${item.productId}`,
+        async () => {
+          const productRequest = new Request(`https://workers.dev/product/${item.productId}`, {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+          });
+          
+          // Inject trace context
+          const { injectTraceContext } = await import('../../shared/utils/otel.js');
+          injectTraceContext(productRequest.headers);
+          
+          const productResponse = await env.catalog_worker.fetch(productRequest);
+          if (productResponse.ok) {
+            const product = await productResponse.json();
+            return { ...item, category: product.category || 'accessories' };
+          }
+          // Fallback category if product fetch fails
+          return { ...item, category: 'accessories' };
+        },
+        {
+          url: `https://workers.dev/product/${item.productId}`,
+          method: 'GET',
+          system: 'catalog-worker',
+          operation: 'get_product',
+          productId: item.productId,
+        },
+        request
+      );
+    });
+    
+    const itemsWithCategories = await Promise.all(productDetailsPromises);
+    
+    // Now calculate shipping for each item using per-item shipping modes
+    const shippingPromises = itemsWithCategories.map(item => {
+      // Use per-item shipping mode if available, otherwise fall back to global shippingMode or 'standard'
+      const itemShippingMode = orderData.itemShippingModes?.[item.productId] || 
+                               orderData.shippingMode || 
+                               'standard';
+      
+      return traceExternalCall(
+        `fulfillment.calculate_shipping.${item.productId}`,
+        async () => {
+          const shippingRequest = new Request('https://workers.dev/shipping/calculate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+            body: JSON.stringify({
+              category: item.category,
+              shippingMode: itemShippingMode,
+              quantity: item.quantity,
+              address: {
+                // Map zipCode to pincode for shipping calculation
+                pincode: orderData.address.zipCode || orderData.address.pincode,
+                city: orderData.address.city || '',
+                state: orderData.address.state,
+              },
+              productId: item.productId, // Pass productId for stock-aware warehouse selection
+            }),
+          });
+          
+          // Inject trace context
+          const { injectTraceContext } = await import('../../shared/utils/otel.js');
+          injectTraceContext(shippingRequest.headers);
+          
+          return await env.fulfillment_worker.fetch(shippingRequest);
+        },
+        {
+          url: 'https://workers.dev/shipping/calculate',
+          method: 'POST',
+          system: 'fulfillment-worker',
+          operation: 'calculate_shipping',
+          productId: item.productId,
+          shippingMode: itemShippingMode,
+        },
+        request
+      );
+    });
+    
+    const shippingResponses = await Promise.all(shippingPromises);
+    
+    // Process shipping responses
+    const shippingCosts = [];
+    let totalShippingCost = 0;
+    
+    for (let i = 0; i < shippingResponses.length; i++) {
+      const response = shippingResponses[i];
+      if (!response.ok) {
+        let errorText;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+        } catch (e) {
+          errorText = await response.text();
+        }
+        throw new ConflictError(`Shipping calculation failed for product ${itemsWithCategories[i].productId}: ${errorText}`);
+      }
+      
+      const shippingData = await response.json();
+      shippingCosts.push(shippingData);
+      totalShippingCost += shippingData.cost || 0;
+    }
+    
+    // Step 3: Calculate total
+    const subtotal = cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalAmount = subtotal + totalShippingCost;
+    
+    // Step 4: Create order record
+    let order;
+    try {
+      const itemsWithShipping = cart.items.map((item, index) => {
+        const shippingInfo = shippingCosts[index] || {};
+        const estimatedDays = shippingInfo.estimatedDays || 5;
+        
+        return {
+          ...item,
+          shipping: {
+            cost: shippingInfo.cost || 0,
+            estimatedDays: estimatedDays,
+            mode: orderData.itemShippingModes?.[item.productId] || orderData.shippingMode || 'standard',
+          },
+        };
+      });
+      
+      order = await createOrder(env.orders_db, {
+        userId,
+        userData: orderData.userData || {},
+        addressData: orderData.address,
+        productData: {
+          items: itemsWithShipping,
+          shipping: shippingCosts,
+        },
+        shippingData: {
+          mode: orderData.shippingMode || (orderData.itemShippingModes ? 'mixed' : 'standard'),
+          itemModes: orderData.itemShippingModes || {},
+          cost: totalShippingCost,
+          estimatedDelivery: shippingCosts[0]?.estimatedDays || 5,
+        },
+        totalAmount,
+      });
+      console.log('[cod-order-saga] Order record created:', order.orderId);
+    } catch (error) {
+      console.error('[cod-order-saga] Failed to create order record:', error);
+      throw new Error(`Failed to create order record: ${error.message}`);
+    }
+    
+    if (!order || !order.orderId) {
+      throw new Error('Order creation returned invalid result');
+    }
+    
+    sagaState.orderId = order.orderId;
+    sagaState.orderCreated = true;
+    
+    compensationSteps.push({
+      name: 'createOrder',
+      compensate: async () => {
+        await updateOrderStatus(env.orders_db, order.orderId, 'cancelled');
+      },
+    });
+    
+    // Step 5: Reserve stock for all items
+    console.log('[cod-order-saga] Reserving stock for', cart.items.length, 'items...');
+    const stockReservationPromises = cart.items.map(async (item) => {
+      const stockHeaders = new Headers({
+        'Content-Type': 'application/json',
+        'X-API-Key': env.INTER_WORKER_API_KEY,
+        'X-Worker-Request': 'true',
+      });
+      const { injectTraceContext } = await import('../../shared/utils/otel.js');
+      injectTraceContext(stockHeaders);
+      
+      const reserveRequest = new Request('https://workers.dev/stock/' + item.productId + '/reserve', {
+        method: 'POST',
+        headers: stockHeaders,
+        body: JSON.stringify({ 
+          quantity: item.quantity,
+          orderId: order.orderId,
+          ttlMinutes: 15,
+        }),
+      });
+      
+      const response = await env.fulfillment_worker.fetch(reserveRequest);
+      
+      if (!response.ok) {
+        let errorText;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+        } catch (e) {
+          errorText = await response.text();
+        }
+        throw new ConflictError(`Failed to reserve stock for product ${item.productId}: ${errorText}`);
+      }
+      
+      sagaState.stockReserved.push({
+        productId: item.productId,
+        quantity: item.quantity,
+      });
+    });
+    
+    await Promise.all(stockReservationPromises);
+    console.log('[cod-order-saga] Stock reservation completed');
+    
+    compensationSteps.push({
+      name: 'reserveStock',
+      compensate: async () => {
+        // Release reserved stock
+        if (!env.fulfillment_worker) {
+          console.error('[cod-order-saga] Cannot release stock: fulfillment worker binding not available');
+          return;
+        }
+        
+        for (const stock of sagaState.stockReserved) {
+          try {
+            const releaseHeaders = new Headers({
+              'Content-Type': 'application/json',
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            });
+            const { injectTraceContext } = await import('../../shared/utils/otel.js');
+            injectTraceContext(releaseHeaders);
+            
+            const releaseRequest = new Request('https://workers.dev/stock/' + stock.productId + '/release', {
+              method: 'POST',
+              headers: releaseHeaders,
+              body: JSON.stringify({ orderId: order.orderId }),
+            });
+            
+            await env.fulfillment_worker.fetch(releaseRequest);
+            console.log(`[cod-order-saga] Released reserved stock for product ${stock.productId}`);
+          } catch (error) {
+            console.error(`[cod-order-saga] Failed to release stock for ${stock.productId}:`, error);
+          }
+        }
+      },
+    });
+    
+    // Step 6: Reduce stock (immediately, since COD orders are confirmed)
+    console.log('[cod-order-saga] Reducing stock for', cart.items.length, 'items...');
+    const stockReductionPromises = cart.items.map(async (item) => {
+      const stockHeaders = new Headers({
+        'Content-Type': 'application/json',
+        'X-API-Key': env.INTER_WORKER_API_KEY,
+        'X-Worker-Request': 'true',
+      });
+      const { injectTraceContext } = await import('../../shared/utils/otel.js');
+      injectTraceContext(stockHeaders);
+      
+      const stockRequest = new Request('https://workers.dev/stock/' + item.productId + '/reduce', {
+        method: 'POST',
+        headers: stockHeaders,
+        body: JSON.stringify({ 
+          quantity: item.quantity,
+          orderId: order.orderId,
+        }),
+      });
+      
+      const response = await env.fulfillment_worker.fetch(stockRequest);
+      
+      if (!response.ok) {
+        let errorText;
+        try {
+          const errorData = await response.json();
+          errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+        } catch (e) {
+          errorText = await response.text();
+        }
+        throw new ConflictError(`Failed to reduce stock for product ${item.productId}: ${errorText}`);
+      }
+      
+      sagaState.stockReduced.push({
+        productId: item.productId,
+        quantity: item.quantity,
+      });
+    });
+    
+    await Promise.all(stockReductionPromises);
+    console.log('[cod-order-saga] Stock reduction completed');
+    
+    // Step 7: Clear cart
+    if (!env.cart_worker) {
+      throw new Error('Cart worker service binding not available');
+    }
+    
+    const clearCartRequest = new Request('https://workers.dev/cart/clear', {
+      method: 'POST',
+      headers: {
+        'X-API-Key': env.INTER_WORKER_API_KEY,
+        'X-Worker-Request': 'true',
+        'Authorization': `Bearer ${orderData.accessToken}`,
+        'Cookie': `accessToken=${orderData.accessToken}`,
+      },
+    });
+    
+    const { injectTraceContext: injectCartTrace } = await import('../../shared/utils/otel.js');
+    injectCartTrace(clearCartRequest.headers);
+    
+    const clearCartResponse = await env.cart_worker.fetch(clearCartRequest);
+    
+    if (!clearCartResponse.ok) {
+      const errorText = await clearCartResponse.text();
+      console.warn('[cod-order-saga] Failed to clear cart:', errorText);
+      // Don't fail the order if cart clearing fails
+    } else {
+      sagaState.cartCleared = true;
+      console.log('[cod-order-saga] Cart cleared');
+    }
+    
+    // Step 8: Update order status to completed
+    await updateOrderStatus(env.orders_db, order.orderId, 'completed');
+    console.log('[cod-order-saga] Order status updated to completed');
+    
+    sagaSpan.setAttribute('order.id', order.orderId);
+    sagaSpan.setAttribute('order.status', 'completed');
+    addSpanLog(sagaSpan, 'COD order completed', { 
+      orderId: order.orderId,
+      totalAmount 
+    }, request);
+    sagaSpan.end();
+    
+    // Log COD order completion
+    await sendLog(logWorkerBindingOrUrl, 'event', 'COD order completed', {
+      orderId: order.orderId,
+      userId,
+      totalAmount,
+      worker: 'orders-worker',
+    }, apiKey, ctx);
+    
+    return {
+      orderId: order.orderId,
+      status: 'completed',
+      totalAmount,
+    };
+    
+  } catch (error) {
+    console.error('[cod-order-saga] Error creating COD order:', error);
+    
+    // Execute compensation steps in reverse order
+    for (let i = compensationSteps.length - 1; i >= 0; i--) {
+      try {
+        await compensationSteps[i].compensate();
+      } catch (compError) {
+        console.error(`[cod-order-saga] Compensation step ${compensationSteps[i].name} failed:`, compError);
+      }
+    }
+    
+    sagaSpan.recordException(error);
+    sagaSpan.end();
+    
+    // Log COD order failure
+    await sendLog(logWorkerBindingOrUrl, 'error', 'COD order creation failed', {
+      userId,
+      error: error.message,
+      worker: 'orders-worker',
+    }, apiKey, ctx);
+    
+    throw error;
+  }
+}
+

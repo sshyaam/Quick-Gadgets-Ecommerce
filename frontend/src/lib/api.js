@@ -419,6 +419,13 @@ export const ordersApi = {
 		});
 	},
 
+	async createCODOrder(orderData) {
+		return apiRequest(`${WORKER_URLS.orders}/order/cod`, {
+			method: 'POST',
+			body: JSON.stringify(orderData)
+		});
+	},
+
 	async capturePayment(orderId, paypalOrderId) {
 		return apiRequest(`${WORKER_URLS.orders}/orders/capture`, {
 			method: 'POST',

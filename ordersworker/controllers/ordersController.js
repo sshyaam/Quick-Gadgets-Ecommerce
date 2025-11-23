@@ -156,6 +156,81 @@ export async function getOrder(request, env) {
  * Capture payment (called after PayPal approval)
  */
 /**
+ * Create COD (Cash on Delivery) order
+ */
+export async function createCODOrder(request, env, ctx = null) {
+  const body = await request.json();
+  
+  const { error, value } = createOrderSchema.validate(body);
+  if (error) {
+    throw new ValidationError(error.details[0].message || 'Invalid order data', error.details);
+  }
+  
+  // Manual validation for itemShippingModes values
+  if (value.itemShippingModes && typeof value.itemShippingModes === 'object') {
+    for (const [productId, shippingMode] of Object.entries(value.itemShippingModes)) {
+      if (shippingMode !== 'standard' && shippingMode !== 'express') {
+        throw new ValidationError(`Invalid shipping mode '${shippingMode}' for product ${productId}. Must be 'standard' or 'express'.`);
+      }
+    }
+  }
+  
+  // Get access token from cookie or Authorization header for cart worker
+  const cookies = request.headers.get('Cookie') || '';
+  const authHeader = request.headers.get('Authorization') || '';
+  
+  let accessToken = null;
+  
+  // Try Authorization header first (localStorage fallback)
+  if (authHeader.startsWith('Bearer ')) {
+    accessToken = authHeader.substring(7).trim();
+  } else {
+    // Try cookies
+    const cookieParts = cookies.split(';');
+    for (const part of cookieParts) {
+      const trimmed = part.trim();
+      if (trimmed.startsWith('accessToken=')) {
+        accessToken = trimmed.substring('accessToken='.length).trim();
+        // Decode if URL encoded
+        try {
+          accessToken = decodeURIComponent(accessToken);
+        } catch (e) {
+          // If decoding fails, use as-is
+        }
+        break;
+      }
+    }
+  }
+  
+  // If still no token, log error (shouldn't happen if authenticate middleware worked)
+  if (!accessToken) {
+    console.error('[orders-controller] No access token found for cart worker call');
+    throw new Error('Access token required for cart operations');
+  }
+  
+  const { createCODOrderSaga } = await import('../services/orderSagaService.js');
+  const result = await createCODOrderSaga(
+    request.user.userId,
+    {
+      ...value,
+      accessToken,
+      userData: request.user,
+    },
+    env,
+    ctx,
+    request
+  );
+  
+  return new Response(
+    JSON.stringify(result),
+    {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }
+  );
+}
+
+/**
  * Cancel order and release reserved stock
  */
 export async function cancelOrder(request, env, ctx = null) {

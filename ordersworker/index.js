@@ -35,6 +35,14 @@ router.post('/order', async (request, env, ctx) => {
   return await ordersController.createOrder(request, env, ctx);
 });
 
+router.post('/order/cod', async (request, env, ctx) => {
+  const authResult = await authController.authenticate(request, env);
+  if (authResult instanceof Response) {
+    return authResult;
+  }
+  return await ordersController.createCODOrder(request, env, ctx);
+});
+
 router.post('/orders/capture', async (request, env, ctx) => {
   const authResult = await authController.authenticate(request, env);
   if (authResult instanceof Response) {

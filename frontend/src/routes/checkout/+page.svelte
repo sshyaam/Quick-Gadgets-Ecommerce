@@ -23,6 +23,9 @@
 	let timeRemaining = 15 * 60; // 15 minutes in seconds
 	let currentOrderId = null;
 	
+	// Payment method selection
+	let paymentMethod = 'paypal'; // 'paypal' or 'cod'
+	
 	// Address management
 	let savedAddresses = [];
 	let selectedAddressId = null;
@@ -605,6 +608,27 @@
 				itemShippingModes: itemShippingModes // Per-item shipping modes
 			};
 
+			// Handle COD vs PayPal checkout
+			if (paymentMethod === 'cod') {
+				// COD flow: create order and mark as completed immediately
+				const order = await ordersApi.createCODOrder(orderData);
+				
+				if (order && order.orderId) {
+					message = 'Order placed successfully! You will pay when you receive your order.';
+					// Clear cart
+					await cartApi.clearCart();
+					// Redirect to orders page after a delay
+					setTimeout(() => {
+						goto('/orders');
+					}, 2000);
+				} else {
+					error = 'Failed to place COD order. Please try again.';
+					loading = false;
+				}
+				return;
+			}
+
+			// PayPal flow: create order and get PayPal approval URL
 			const order = await ordersApi.createOrder(orderData);
 			
 			// Order creation returns PayPal approval URL
@@ -1079,12 +1103,47 @@
 					</div>
 				</div>
 
+				<!-- Payment Method Selection -->
+				<div class="mb-4">
+					<h3 class="text-sm font-semibold text-gray-700 mb-3">Payment Method</h3>
+					<div class="space-y-2">
+						<label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {paymentMethod === 'paypal' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}">
+							<input
+								type="radio"
+								name="paymentMethod"
+								value="paypal"
+								checked={paymentMethod === 'paypal'}
+								on:change={() => paymentMethod = 'paypal'}
+								class="mr-3"
+							/>
+							<div class="flex-1">
+								<div class="font-semibold">PayPal</div>
+								<div class="text-xs text-gray-600">Pay securely with PayPal</div>
+							</div>
+						</label>
+						<label class="flex items-center p-3 border rounded-lg cursor-pointer hover:bg-gray-50 {paymentMethod === 'cod' ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}">
+							<input
+								type="radio"
+								name="paymentMethod"
+								value="cod"
+								checked={paymentMethod === 'cod'}
+								on:change={() => paymentMethod = 'cod'}
+								class="mr-3"
+							/>
+							<div class="flex-1">
+								<div class="font-semibold">Cash on Delivery (COD)</div>
+								<div class="text-xs text-gray-600">Pay when you receive your order</div>
+							</div>
+						</label>
+					</div>
+				</div>
+
 				<button
 					on:click={handleCheckout}
 					disabled={loading || loadingShipping || !hasAvailableShipping || showPayPalLoading}
 					class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-3 rounded-lg font-semibold"
 				>
-					{loading ? 'Processing...' : showPayPalLoading ? 'Payment in Progress...' : 'Checkout with Paypal'}
+					{loading ? 'Processing...' : showPayPalLoading ? 'Payment in Progress...' : paymentMethod === 'cod' ? 'Place Order (COD)' : 'Checkout with PayPal'}
 				</button>
 
 			</div>
