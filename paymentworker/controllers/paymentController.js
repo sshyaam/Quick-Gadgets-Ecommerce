@@ -231,10 +231,15 @@ export async function capturePayPalOrder(request, env, ctx = null) {
     }
   }
   
+  // Return full capture result so billing address can be extracted
   return new Response(
     JSON.stringify({
       status: captureResult.status,
       payment: captureResult.purchase_units[0]?.payments?.captures[0],
+      // Include full capture data for billing address extraction
+      purchase_units: captureResult.purchase_units,
+      payer: captureResult.payer,
+      id: captureResult.id,
     }),
     {
       status: 200,

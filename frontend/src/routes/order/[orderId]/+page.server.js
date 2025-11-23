@@ -70,6 +70,10 @@ export async function load({ params, cookies, fetch, request }) {
 				cost: order.shippingData.cost || 0,
 				estimatedDelivery: order.shippingData.estimatedDelivery || 5,
 			} : null,
+			// Payment method and billing address
+			paymentMethod: order.paymentMethod || 'paypal',
+			billingAddress: order.billingAddress || 'Not Available',
+			billingAddressData: order.billingAddressData || null,
 			// Keep other fields for compatibility
 			addressData: order.addressData,
 			userData: order.userData,

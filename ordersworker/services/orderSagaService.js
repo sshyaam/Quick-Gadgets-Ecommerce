@@ -476,6 +476,7 @@ export async function createOrderSaga(
           estimatedDelivery: shippingCosts[0]?.estimatedDays || 5, // Keep for backward compatibility
         },
         totalAmount,
+        paymentMethod: 'paypal', // PayPal orders
       });
       console.log('[order-saga] Order record created:', order.orderId);
     } catch (error) {
@@ -804,6 +805,92 @@ export async function capturePaymentSaga(
     
     if (!order) {
       throw new ConflictError(`Order ${orderId} not found`);
+    }
+    
+    // Extract and update billing address from PayPal response
+    // PayPal provides shipping address, not billing address, but we'll use shipping as billing
+    try {
+      let billingAddress = null;
+      
+      console.log('[payment-saga] Extracting billing address from PayPal response. Capture data keys:', Object.keys(captureData || {}));
+      
+      // Try to get shipping address from purchase_units
+      const purchaseUnit = captureData.purchase_units?.[0];
+      console.log('[payment-saga] Purchase unit structure:', {
+        hasPurchaseUnit: !!purchaseUnit,
+        hasShipping: !!purchaseUnit?.shipping,
+        hasAddress: !!purchaseUnit?.shipping?.address,
+        shippingKeys: purchaseUnit?.shipping ? Object.keys(purchaseUnit.shipping) : [],
+      });
+      
+      if (purchaseUnit?.shipping?.address) {
+        const shippingAddr = purchaseUnit.shipping.address;
+        console.log('[payment-saga] Shipping address keys:', Object.keys(shippingAddr));
+        
+        billingAddress = {
+          line1: shippingAddr.address_line_1 || shippingAddr.line1 || '',
+          line2: shippingAddr.address_line_2 || shippingAddr.line2 || '',
+          city: shippingAddr.admin_area_2 || shippingAddr.city || '',
+          state: shippingAddr.admin_area_1 || shippingAddr.state || '',
+          postalCode: shippingAddr.postal_code || shippingAddr.postalCode || '',
+          countryCode: shippingAddr.country_code || shippingAddr.countryCode || '',
+        };
+        
+        // Also try to get name from shipping
+        if (purchaseUnit.shipping?.name) {
+          billingAddress.name = purchaseUnit.shipping.name.full_name || purchaseUnit.shipping.name || '';
+        }
+        
+        // Remove empty fields
+        Object.keys(billingAddress).forEach(key => {
+          if (billingAddress[key] === '') {
+            delete billingAddress[key];
+          }
+        });
+      }
+      
+      // If no shipping address, try payer address (if available)
+      if (!billingAddress && captureData.payer?.address) {
+        const payerAddr = captureData.payer.address;
+        console.log('[payment-saga] Using payer address. Payer address keys:', Object.keys(payerAddr));
+        
+        billingAddress = {
+          line1: payerAddr.address_line_1 || payerAddr.line1 || '',
+          line2: payerAddr.address_line_2 || payerAddr.line2 || '',
+          city: payerAddr.admin_area_2 || payerAddr.city || '',
+          state: payerAddr.admin_area_1 || payerAddr.state || '',
+          postalCode: payerAddr.postal_code || payerAddr.postalCode || '',
+          countryCode: payerAddr.country_code || payerAddr.countryCode || '',
+        };
+        
+        // Remove empty fields
+        Object.keys(billingAddress).forEach(key => {
+          if (billingAddress[key] === '') {
+            delete billingAddress[key];
+          }
+        });
+      }
+      
+      // If we have billing address, update the order
+      if (billingAddress) {
+        const { updateBillingAddress } = await import('../models/orderModel.js');
+        const updated = await updateBillingAddress(env.orders_db, orderId, billingAddress);
+        if (updated) {
+          console.log('[payment-saga] Billing address updated from PayPal:', JSON.stringify(billingAddress));
+        } else {
+          console.warn('[payment-saga] Failed to update billing address in database');
+        }
+      } else {
+        console.log('[payment-saga] No billing address found in PayPal response. Capture data structure:', JSON.stringify({
+          hasPurchaseUnits: !!captureData.purchase_units,
+          purchaseUnitsLength: captureData.purchase_units?.length || 0,
+          hasPayer: !!captureData.payer,
+          hasPayerAddress: !!captureData.payer?.address,
+        }));
+      }
+    } catch (billingError) {
+      console.warn('[payment-saga] Failed to extract/update billing address:', billingError);
+      // Don't fail the saga if billing address extraction fails
     }
     
     const orderItems = typeof order.productData === 'string' 
@@ -1466,6 +1553,7 @@ export async function createCODOrderSaga(
           estimatedDelivery: shippingCosts[0]?.estimatedDays || 5,
         },
         totalAmount,
+        paymentMethod: 'cod', // Cash on Delivery orders
       });
       console.log('[cod-order-saga] Order record created:', order.orderId);
     } catch (error) {

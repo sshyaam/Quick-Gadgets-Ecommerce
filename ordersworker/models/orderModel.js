@@ -13,6 +13,12 @@ export async function createOrder(db, orderData) {
   const orderId = crypto.randomUUID();
   const now = new Date().toISOString();
   
+  // Prepare address data with payment method
+  const addressDataWithPayment = {
+    ...orderData.addressData,
+    paymentMethod: orderData.paymentMethod || 'paypal', // Default to paypal for backward compatibility
+  };
+  
   const result = await db
     .prepare(
       `INSERT INTO orders (order_id, user_id, user_data, address_data, product_data, shipping_data, total_amount, status, created_at, updated_at)
@@ -22,7 +28,7 @@ export async function createOrder(db, orderData) {
       orderId,
       orderData.userId,
       JSON.stringify(orderData.userData),
-      JSON.stringify(orderData.addressData),
+      JSON.stringify(addressDataWithPayment),
       JSON.stringify(orderData.productData),
       JSON.stringify(orderData.shippingData || {}),
       orderData.totalAmount,
@@ -189,6 +195,36 @@ export async function updateOrderStatus(db, orderId, status) {
        WHERE order_id = ?`
     )
     .bind(status, new Date().toISOString(), orderId)
+    .run();
+  
+  return result.success && result.meta.changes > 0;
+}
+
+/**
+ * Update billing address from PayPal
+ * @param {D1Database} db - Database instance
+ * @param {string} orderId - Order ID
+ * @param {Object} billingAddress - Billing address data
+ * @returns {Promise<boolean>} True if updated
+ */
+export async function updateBillingAddress(db, orderId, billingAddress) {
+  // Get current order to merge billing address into address_data
+  const order = await getOrderById(db, orderId);
+  if (!order) {
+    return false;
+  }
+  
+  // Merge billing address into address_data
+  const addressData = order.addressData || {};
+  addressData.billingAddress = billingAddress;
+  
+  const result = await db
+    .prepare(
+      `UPDATE orders 
+       SET address_data = ?, updated_at = ? 
+       WHERE order_id = ?`
+    )
+    .bind(JSON.stringify(addressData), new Date().toISOString(), orderId)
     .run();
   
   return result.success && result.meta.changes > 0;

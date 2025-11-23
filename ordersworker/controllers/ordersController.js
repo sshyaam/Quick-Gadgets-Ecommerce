@@ -69,27 +69,50 @@ export async function getOrders(request, env) {
   
   console.log('[orders-controller] Found orders:', orders.orders.length, 'with filters:', { status, dateFrom, dateTo });
   
-  // Transform orders to match frontend expectations
-  const transformedOrders = orders.orders.map(order => ({
-    orderId: order.orderId,
-    status: order.status,
-    totalAmount: order.totalAmount,
-    createdAt: order.createdAt,
-    updatedAt: order.updatedAt,
-    // Map productData.items to items
-    items: order.productData?.items || [],
-    // Map shippingData to shippingInfo
-    shippingInfo: order.shippingData ? {
-      mode: order.shippingData.mode || 'standard',
-      cost: order.shippingData.cost || 0,
-      estimatedDelivery: order.shippingData.estimatedDelivery || 5,
-    } : null,
-    // Keep other fields for compatibility
-    addressData: order.addressData,
-    userData: order.userData,
-    productData: order.productData,
-    shippingData: order.shippingData,
-  }));
+    // Format billing address for display
+    const formatBillingAddress = (billingAddr) => {
+      if (!billingAddr) {
+        return 'Not Available';
+      }
+      
+      const parts = [];
+      if (billingAddr.name) parts.push(billingAddr.name);
+      if (billingAddr.line1) parts.push(billingAddr.line1);
+      if (billingAddr.line2) parts.push(billingAddr.line2);
+      if (billingAddr.city) parts.push(billingAddr.city);
+      if (billingAddr.state) parts.push(billingAddr.state);
+      if (billingAddr.postalCode) parts.push(billingAddr.postalCode);
+      if (billingAddr.countryCode) parts.push(billingAddr.countryCode);
+      
+      return parts.length > 0 ? parts.join(', ') : 'Not Available';
+    };
+    
+    // Transform orders to match frontend expectations
+    const transformedOrders = orders.orders.map(order => ({
+      orderId: order.orderId,
+      status: order.status,
+      totalAmount: order.totalAmount,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+      // Map productData.items to items
+      items: order.productData?.items || [],
+      // Map shippingData to shippingInfo
+      shippingInfo: order.shippingData ? {
+        mode: order.shippingData.mode || 'standard',
+        cost: order.shippingData.cost || 0,
+        estimatedDelivery: order.shippingData.estimatedDelivery || 5,
+      } : null,
+      // Payment method
+      paymentMethod: order.addressData?.paymentMethod || 'paypal', // Default to paypal for backward compatibility
+      // Billing address from PayPal
+      billingAddress: formatBillingAddress(order.addressData?.billingAddress),
+      billingAddressData: order.addressData?.billingAddress || null,
+      // Keep other fields for compatibility
+      addressData: order.addressData,
+      userData: order.userData,
+      productData: order.productData,
+      shippingData: order.shippingData,
+    }));
   
   // Group by delivery date
   const groupedOrders = orderService.groupOrdersByDeliveryDate(transformedOrders);
@@ -121,6 +144,24 @@ export async function getOrder(request, env) {
     );
   }
   
+  // Format billing address for display
+  const formatBillingAddress = (billingAddr) => {
+    if (!billingAddr) {
+      return 'Not Available';
+    }
+    
+    const parts = [];
+    if (billingAddr.name) parts.push(billingAddr.name);
+    if (billingAddr.line1) parts.push(billingAddr.line1);
+    if (billingAddr.line2) parts.push(billingAddr.line2);
+    if (billingAddr.city) parts.push(billingAddr.city);
+    if (billingAddr.state) parts.push(billingAddr.state);
+    if (billingAddr.postalCode) parts.push(billingAddr.postalCode);
+    if (billingAddr.countryCode) parts.push(billingAddr.countryCode);
+    
+    return parts.length > 0 ? parts.join(', ') : 'Not Available';
+  };
+  
   // Transform order to match frontend expectations
   const transformedOrder = {
     orderId: order.orderId,
@@ -136,6 +177,11 @@ export async function getOrder(request, env) {
       cost: order.shippingData.cost || 0,
       estimatedDelivery: order.shippingData.estimatedDelivery || 5,
     } : null,
+    // Payment method
+    paymentMethod: order.addressData?.paymentMethod || 'paypal', // Default to paypal for backward compatibility
+    // Billing address from PayPal
+    billingAddress: formatBillingAddress(order.addressData?.billingAddress),
+    billingAddressData: order.addressData?.billingAddress || null,
     // Keep other fields for compatibility
     addressData: order.addressData,
     userData: order.userData,

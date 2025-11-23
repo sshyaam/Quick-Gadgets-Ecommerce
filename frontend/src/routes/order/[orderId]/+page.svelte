@@ -46,6 +46,9 @@
 							cost: loadedOrder.shippingData.cost || 0,
 							estimatedDelivery: loadedOrder.shippingData.estimatedDelivery || 5,
 						} : null,
+						paymentMethod: loadedOrder.paymentMethod || 'paypal',
+						billingAddress: loadedOrder.billingAddress || 'Not Available',
+						billingAddressData: loadedOrder.billingAddressData || null,
 						addressData: loadedOrder.addressData,
 						userData: loadedOrder.userData,
 						productData: loadedOrder.productData,
@@ -273,6 +276,11 @@
 						<strong>Status:</strong> <span class="font-semibold capitalize">{order.status}</span>
 					</p>
 					<p class="text-sm text-gray-600">
+						<strong>Payment Method:</strong> <span class="font-semibold capitalize">
+							{order.paymentMethod === 'cod' ? 'Cash on Delivery' : 'PayPal'}
+						</span>
+					</p>
+					<p class="text-sm text-gray-600">
 						<strong>Placed on:</strong> {formatDate(order.createdAt)}
 					</p>
 					{#if order.deliveryDate && order.status !== 'failed' && order.status !== 'cancelled' && order.status !== 'pending'}
@@ -301,6 +309,15 @@
 					{/if}
 				</div>
 			</div>
+
+			{#if order.paymentMethod === 'paypal'}
+				<div class="border-t pt-6 mb-6">
+					<h3 class="font-semibold text-gray-700 mb-2">Billing Address</h3>
+					<p class="text-sm text-gray-600">
+						{order.billingAddress || 'Not Available'}
+					</p>
+				</div>
+			{/if}
 
 			<div class="border-t pt-6">
 				<h3 class="font-semibold text-gray-700 mb-4">Order Items</h3>
