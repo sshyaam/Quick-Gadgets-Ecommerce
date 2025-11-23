@@ -3,6 +3,7 @@ import { errorHandler } from '../shared/utils/errors.js';
 import { addCorsHeaders, handleOptions } from '../shared/utils/cors.js';
 import { validateApiKey } from '../shared/utils/interWorker.js';
 import { AuthenticationError } from '../shared/utils/errors.js';
+import { instrumentHandler, initRequestTrace, addTraceHeaders, createOtelConfig } from '../shared/utils/tracing.js';
 import * as pricingController from './controllers/pricingController.js';
 
 const router = Router();
@@ -85,26 +86,94 @@ router.all('*', (request) => {
   return new Response('Not Found', { status: 404 });
 });
 
-export default {
+const handler = {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    console.log(`[pricing-worker] ${request.method} ${url.pathname}${url.search}`);
-    console.log(`[pricing-worker] Headers:`, {
-      'x-api-key': request.headers.get('X-API-Key') ? 'present' : 'missing',
-      'x-worker-request': request.headers.get('X-Worker-Request'),
-    });
     
-    try {
-      const response = await router.handle(request, env, ctx);
-      if (!response) {
-        console.error('[pricing-worker] Router returned null/undefined');
-        return new Response('Internal Server Error', { status: 500 });
+    // Extract trace context from incoming request (for distributed tracing)
+    // This ensures traces from other workers or external clients are properly linked
+    const { withTraceContext, getTraceContext, getCfRayId } = await import('../shared/utils/otel.js');
+    
+    // Always try to extract and use trace context from incoming request
+    // If no trace context exists, OpenTelemetry will create a new trace
+    return await withTraceContext(request.headers, async () => {
+      // Initialize request tracing with CF Ray ID (within the trace context)
+      initRequestTrace(request, 'pricing-worker');
+      
+      // Log structured JSON with trace IDs and CF Ray ID
+      const traceContext = getTraceContext();
+      const cfRayId = getCfRayId(request);
+      const isWorkerRequest = request.headers.get('X-Worker-Request') === 'true';
+      
+      console.log(JSON.stringify({
+        message: `[pricing-worker] ${request.method} ${url.pathname}${url.search}`,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        cfRayId: cfRayId,
+        method: request.method,
+        path: url.pathname,
+        service: 'pricing-worker',
+        isWorkerRequest: isWorkerRequest,
+      }));
+      
+      try {
+        let response = await router.handle(request, env, ctx);
+        
+        // If router returns null/undefined, create error response
+        if (!response) {
+          console.error('[pricing-worker] Router returned null/undefined');
+          response = new Response(
+            JSON.stringify({
+              error: {
+                code: 'INTERNAL_ERROR',
+                message: 'Internal server error',
+              },
+            }),
+            {
+              status: 500,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        
+        // Add CORS headers
+        response = addCorsHeaders(response, request);
+        
+        // Add trace headers for client correlation
+        response = addTraceHeaders(response, request);
+        
+        // Log structured JSON response
+        console.log(JSON.stringify({
+          message: `[pricing-worker] Returning response with status: ${response.status}`,
+          traceId: traceContext.traceId,
+          spanId: traceContext.spanId,
+          cfRayId: cfRayId,
+          status: response.status,
+          service: 'pricing-worker',
+        }));
+        
+        return response;
+      } catch (error) {
+        console.error(JSON.stringify({
+          message: '[pricing-worker] Fetch handler error',
+          error: error.message,
+          stack: error.stack,
+          traceId: getTraceContext().traceId,
+          spanId: getTraceContext().spanId,
+          cfRayId: getCfRayId(request),
+          service: 'pricing-worker',
+        }));
+        const errorResponse = errorHandler(error, request);
+        const corsResponse = addCorsHeaders(errorResponse, request);
+        return addTraceHeaders(corsResponse, request);
       }
-      return addCorsHeaders(response, request);
-    } catch (error) {
-      console.error('[pricing-worker] Error:', error.message, error.stack);
-      const errorResponse = errorHandler(error, request);
-      return addCorsHeaders(errorResponse, request);
-    }
+    });
   },
 };
+
+// OpenTelemetry configuration for Honeycomb
+// Using unified dataset for distributed tracing across all workers
+const otelConfig = (env) => createOtelConfig(env, 'ecommerce-platform');
+
+// Export instrumented handler
+export default instrumentHandler(handler, otelConfig);

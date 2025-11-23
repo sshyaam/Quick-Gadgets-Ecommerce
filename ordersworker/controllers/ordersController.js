@@ -286,7 +286,8 @@ export async function createOrder(request, env, ctx = null) {
     },
     env,
     frontendOrigin,
-    ctx // Pass execution context for ctx.waitUntil
+    ctx, // Pass execution context for ctx.waitUntil
+    request // Pass request for CF Ray ID and trace context
   );
   
   return new Response(

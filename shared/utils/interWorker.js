@@ -123,6 +123,9 @@ export async function callWorker(workerUrl, options = {}, apiKey) {
     ...(options.headers || {}),
   });
 
+  // Inject trace context for distributed tracing
+  injectTraceContext(headers);
+
   const requestOptions = {
     method: options.method || 'GET',
     headers,

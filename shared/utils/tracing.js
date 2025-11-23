@@ -14,12 +14,24 @@ import { getCfRayId as getCfRayIdFromOtel } from './otel.js';
  * @returns {Object} OpenTelemetry configuration
  */
 export function createOtelConfig(env, serviceName) {
+  // Use unified dataset for all workers to see traces together
+  // Force ecommerce-platform unless explicitly overridden
+  // This ensures all workers use the same dataset for distributed tracing
+  const unifiedDataset = env.HONEYCOMB_DATASET || 'ecommerce-platform';
+  
+  // Log configuration for debugging (only if API key is set to avoid exposing secrets)
+  if (env.HONEYCOMB_API_KEY) {
+    console.log(`[tracing] OpenTelemetry configured for service: ${serviceName}, dataset: ${unifiedDataset}, env.HONEYCOMB_DATASET: ${env.HONEYCOMB_DATASET || 'undefined'}`);
+  } else {
+    console.warn(`[tracing] HONEYCOMB_API_KEY not set for ${serviceName}. Traces will not be sent to Honeycomb.`);
+  }
+  
   const config = {
     exporter: {
       url: env.HONEYCOMB_ENDPOINT || 'https://api.honeycomb.io/v1/traces',
       headers: {
         'x-honeycomb-team': env.HONEYCOMB_API_KEY || '',
-        'x-honeycomb-dataset': env.HONEYCOMB_DATASET || serviceName || 'cloudflare-worker',
+        'x-honeycomb-dataset': unifiedDataset,
       },
     },
     service: {
@@ -71,6 +83,13 @@ export function initRequestTrace(request, serviceName) {
   
   if (span) {
     const traceContext = span.spanContext();
+    
+    // Add service name as attribute (important for filtering in Honeycomb)
+    if (serviceName) {
+      span.setAttribute('service.name', serviceName);
+      span.setAttribute('service_name', serviceName); // Also add as snake_case for easier querying
+      span.setAttribute('worker.name', serviceName); // Worker-specific attribute
+    }
     
     // Add CF Ray ID to the active span (required)
     if (cfRayId) {

@@ -9,6 +9,14 @@ import { executeTransaction } from '../../shared/utils/database.js';
 import { createOrder, updateOrderStatus } from '../models/orderModel.js';
 import { ConflictError } from '../../shared/utils/errors.js';
 import { sendLog } from '../../shared/utils/logger.js';
+import { 
+  traceExternalCall, 
+  getTracer, 
+  getCfRayId, 
+  addSpanAttributes,
+  addSpanLog,
+  injectTraceContext 
+} from '../../shared/utils/otel.js';
 
 /**
  * Saga step result
@@ -39,10 +47,22 @@ export async function createOrderSaga(
   orderData,
   env,
   frontendOrigin = null,
-  ctx = null
+  ctx = null,
+  request = null // Add request parameter for CF Ray ID
 ) {
   const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;
   const apiKey = env.INTER_WORKER_API_KEY;
+  const tracer = getTracer('orders-worker');
+  const cfRayId = request ? getCfRayId(request) : null;
+  
+  // Create main span for order creation saga
+  const sagaSpan = tracer.startSpan('order.create_saga');
+  if (cfRayId) {
+    sagaSpan.setAttribute('cf.ray_id', cfRayId);
+  }
+  sagaSpan.setAttribute('user.id', userId);
+  sagaSpan.setAttribute('cart.item_count', orderData?.cart?.items?.length || 0);
+  addSpanLog(sagaSpan, 'Order creation saga started', { userId, cartItemCount: orderData?.cart?.items?.length || 0 }, request);
   
   const sagaState = {
     orderId: null,
@@ -66,6 +86,7 @@ export async function createOrderSaga(
     }, apiKey, ctx);
     
     console.log('[order-saga] Starting order creation for user:', userId);
+    
     // Step 1: Get and validate cart using service binding
     if (!env.cart_worker) {
       throw new Error('Cart worker service binding not available');
@@ -77,29 +98,42 @@ export async function createOrderSaga(
       throw new ConflictError('Access token required for cart operations');
     }
     
-    console.log('[order-saga] Calling cart worker with token (length:', orderData.accessToken.length, ')');
-    const cartRequest = new Request('https://workers.dev/cart', {
-      method: 'GET',
-      headers: {
-        'X-API-Key': env.INTER_WORKER_API_KEY,
-        'X-Worker-Request': 'true',
-        'Authorization': `Bearer ${orderData.accessToken}`, // Use Authorization header for auth
-        'Cookie': `accessToken=${orderData.accessToken}`, // Also try cookie as fallback
+    // Get cart with tracing
+    const cartResponse = await traceExternalCall(
+      'cart.get_cart',
+      async () => {
+        console.log('[order-saga] Calling cart worker with token (length:', orderData.accessToken.length, ')');
+        const cartRequest = new Request('https://workers.dev/cart', {
+          method: 'GET',
+          headers: {
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+            'Authorization': `Bearer ${orderData.accessToken}`,
+            'Cookie': `accessToken=${orderData.accessToken}`,
+          },
+        });
+        
+        // Inject trace context
+        injectTraceContext(cartRequest.headers);
+        
+        const response = await env.cart_worker.fetch(cartRequest);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('[order-saga] Failed to get cart:', response.status, errorText);
+          throw new ConflictError('Failed to get cart');
+        }
+        
+        return response;
       },
-    });
-    
-    const cartResponse = await env.cart_worker.fetch(cartRequest);
-    
-    if (!cartResponse.ok) {
-      const errorText = await cartResponse.text();
-      console.error('[order-saga] Failed to get cart:', cartResponse.status, errorText);
-      console.error('[order-saga] Cart request headers:', {
-        'X-API-Key': 'present',
-        'Authorization': orderData.accessToken ? 'present' : 'missing',
-        'Cookie': orderData.accessToken ? 'present' : 'missing',
-      });
-      throw new ConflictError('Failed to get cart');
-    }
+      {
+        url: 'https://workers.dev/cart',
+        method: 'GET',
+        system: 'cart-worker',
+        operation: 'get_cart',
+      },
+      request
+    );
     
     const cart = await cartResponse.json();
     sagaState.cartId = cart.cartId;
@@ -108,42 +142,61 @@ export async function createOrderSaga(
       throw new ConflictError('Cart is empty');
     }
     
-    // Validate cart (check price/stock changes)
-    const validateRequest = new Request('https://workers.dev/cart/validate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': env.INTER_WORKER_API_KEY,
-        'X-Worker-Request': 'true',
-        'Authorization': `Bearer ${orderData.accessToken}`,
+    // Validate cart (check price/stock changes) with tracing
+    const validation = await traceExternalCall(
+      'cart.validate_cart',
+      async () => {
+        const validateRequest = new Request('https://workers.dev/cart/validate', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+            'Authorization': `Bearer ${orderData.accessToken}`,
+          },
+          body: JSON.stringify({ cart }),
+        });
+        
+        // Inject trace context
+        injectTraceContext(validateRequest.headers);
+        
+        const validateResponse = await env.cart_worker.fetch(validateRequest);
+        
+        if (!validateResponse.ok) {
+          let errorText;
+          try {
+            const errorData = await validateResponse.json();
+            errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+          } catch (e) {
+            errorText = await validateResponse.text();
+          }
+          console.error('[order-saga] Cart validation request failed:', validateResponse.status, errorText);
+          throw new ConflictError(`Cart validation request failed: ${errorText}`);
+        }
+        
+        return validateResponse;
       },
-      body: JSON.stringify({ cart }),
-    });
+      {
+        url: 'https://workers.dev/cart/validate',
+        method: 'POST',
+        system: 'cart-worker',
+        operation: 'validate_cart',
+      },
+      request
+    );
     
-    const validateResponse = await env.cart_worker.fetch(validateRequest);
+    const validationData = await validation.json();
+    console.log('[order-saga] Cart validation result:', validationData);
     
-    if (!validateResponse.ok) {
-      let errorText;
-      try {
-        const errorData = await validateResponse.json();
-        errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
-      } catch (e) {
-        errorText = await validateResponse.text();
-      }
-      console.error('[order-saga] Cart validation request failed:', validateResponse.status, errorText);
-      throw new ConflictError(`Cart validation request failed: ${errorText}`);
-    }
-    
-    const validation = await validateResponse.json();
-    console.log('[order-saga] Cart validation result:', validation);
-    
-    if (!validation.valid) {
-      const errorMessages = validation.errors && validation.errors.length > 0
-        ? validation.errors.map(e => e.message || e).join(', ')
-        : (validation.message || 'Unknown validation error');
+    if (!validationData.valid) {
+      const errorMessages = validationData.errors && validationData.errors.length > 0
+        ? validationData.errors.map(e => e.message || e).join(', ')
+        : (validationData.message || 'Unknown validation error');
       console.error('[order-saga] Cart validation failed:', errorMessages);
       throw new ConflictError(`Cart validation failed: ${errorMessages}`);
     }
+    
+    addSpanLog(sagaSpan, 'Cart validated successfully', { cartId: cart.cartId, itemCount: cart.items.length }, request);
     
     compensationSteps.push({
       name: 'validateCart',
@@ -160,54 +213,89 @@ export async function createOrderSaga(
       throw new Error('Catalog worker service binding not available');
     }
     
-    // First, fetch product details to get categories
+    // First, fetch product details to get categories with tracing
     const productDetailsPromises = cart.items.map(async (item) => {
-      const productRequest = new Request(`https://workers.dev/product/${item.productId}`, {
-        method: 'GET',
-        headers: {
-          'X-API-Key': env.INTER_WORKER_API_KEY,
-          'X-Worker-Request': 'true',
+      return await traceExternalCall(
+        `catalog.get_product.${item.productId}`,
+        async () => {
+          const productRequest = new Request(`https://workers.dev/product/${item.productId}`, {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+          });
+          
+          // Inject trace context
+          injectTraceContext(productRequest.headers);
+          
+          const productResponse = await env.catalog_worker.fetch(productRequest);
+          if (productResponse.ok) {
+            const product = await productResponse.json();
+            return { ...item, category: product.category || 'accessories' };
+          }
+          // Fallback category if product fetch fails
+          return { ...item, category: 'accessories' };
         },
-      });
-      const productResponse = await env.catalog_worker.fetch(productRequest);
-      if (productResponse.ok) {
-        const product = await productResponse.json();
-        return { ...item, category: product.category || 'accessories' };
-      }
-      // Fallback category if product fetch fails
-      return { ...item, category: 'accessories' };
+        {
+          url: `https://workers.dev/product/${item.productId}`,
+          method: 'GET',
+          system: 'catalog-worker',
+          operation: 'get_product',
+          productId: item.productId,
+        },
+        request
+      );
     });
     
     const itemsWithCategories = await Promise.all(productDetailsPromises);
     
-    // Now calculate shipping for each item using per-item shipping modes
+    // Now calculate shipping for each item using per-item shipping modes with tracing
     const shippingPromises = itemsWithCategories.map(item => {
       // Use per-item shipping mode if available, otherwise fall back to global shippingMode or 'standard'
       const itemShippingMode = orderData.itemShippingModes?.[item.productId] || 
                                orderData.shippingMode || 
                                'standard';
       
-      const shippingRequest = new Request('https://workers.dev/shipping/calculate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': env.INTER_WORKER_API_KEY,
-          'X-Worker-Request': 'true',
+      return traceExternalCall(
+        `fulfillment.calculate_shipping.${item.productId}`,
+        async () => {
+          const shippingRequest = new Request('https://workers.dev/shipping/calculate', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+            },
+            body: JSON.stringify({
+              category: item.category,
+              shippingMode: itemShippingMode,
+              quantity: item.quantity,
+              address: {
+                // Map zipCode to pincode for shipping calculation
+                pincode: orderData.address.zipCode || orderData.address.pincode,
+                city: orderData.address.city || '',
+                state: orderData.address.state,
+              },
+              productId: item.productId, // Pass productId for stock-aware warehouse selection
+            }),
+          });
+          
+          // Inject trace context
+          injectTraceContext(shippingRequest.headers);
+          
+          return await env.fulfillment_worker.fetch(shippingRequest);
         },
-        body: JSON.stringify({
-          category: item.category,
+        {
+          url: 'https://workers.dev/shipping/calculate',
+          method: 'POST',
+          system: 'fulfillment-worker',
+          operation: 'calculate_shipping',
+          productId: item.productId,
           shippingMode: itemShippingMode,
-          quantity: item.quantity,
-          address: {
-            // Map zipCode to pincode for shipping calculation
-            pincode: orderData.address.zipCode || orderData.address.pincode,
-            city: orderData.address.city || '',
-            state: orderData.address.state,
-          },
-          productId: item.productId, // Pass productId for stock-aware warehouse selection
-        }),
-      });
-      return env.fulfillment_worker.fetch(shippingRequest);
+        },
+        request
+      );
     });
     
     const shippingResults = await Promise.all(shippingPromises);
@@ -233,6 +321,13 @@ export async function createOrderSaga(
       throw new Error(`Invalid payment amount: cartTotal=${cartTotal}, shipping=${totalShippingCost}, total=${totalAmount}`);
     }
     
+    addSpanLog(sagaSpan, 'Shipping calculated', { 
+      totalShippingCost, 
+      cartTotal, 
+      paymentAmount,
+      itemCount: cart.items.length 
+    }, request);
+    
     compensationSteps.push({
       name: 'calculateShipping',
       compensate: async () => {
@@ -240,7 +335,7 @@ export async function createOrderSaga(
       },
     });
     
-    // Step 3: Create payment order using service binding
+    // Step 3: Create payment order using service binding with tracing
     if (!env.payment_worker) {
       throw new Error('Payment worker service binding not available');
     }
@@ -256,39 +351,59 @@ export async function createOrderSaga(
     console.log('[order-saga] PayPal return URL:', returnUrl);
     console.log('[order-saga] PayPal cancel URL:', cancelUrl);
     
-    const paymentRequest = new Request('https://workers.dev/paypal/create', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Key': env.INTER_WORKER_API_KEY,
-        'X-Worker-Request': 'true',
+    // Create PayPal order with tracing
+    const paypalResponse = await traceExternalCall(
+      'paypal.create_order',
+      async () => {
+        const paymentRequest = new Request('https://workers.dev/paypal/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': env.INTER_WORKER_API_KEY,
+            'X-Worker-Request': 'true',
+          },
+          body: JSON.stringify({
+            amount: paymentAmount, // Ensure it's a number
+            currency: 'INR', // Changed from USD to INR
+            description: `Order for ${cart.items.length} items`,
+            returnUrl: returnUrl, // PayPal return URL (dynamic based on request origin)
+            cancelUrl: cancelUrl, // PayPal cancel URL (dynamic based on request origin)
+          }),
+        });
+        
+        // Inject trace context
+        injectTraceContext(paymentRequest.headers);
+        
+        const paymentResponse = await env.payment_worker.fetch(paymentRequest);
+        
+        if (!paymentResponse.ok) {
+          let errorText;
+          try {
+            const errorData = await paymentResponse.json();
+            errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
+          } catch (e) {
+            errorText = await paymentResponse.text();
+          }
+          console.error('[order-saga] Failed to create payment order:', paymentResponse.status, errorText);
+          throw new ConflictError(`Failed to create payment order: ${errorText}`);
+        }
+        
+        return paymentResponse;
       },
-      body: JSON.stringify({
-        amount: paymentAmount, // Ensure it's a number
-        currency: 'INR', // Changed from USD to INR
-        description: `Order for ${cart.items.length} items`,
-        returnUrl: returnUrl, // PayPal return URL (dynamic based on request origin)
-        cancelUrl: cancelUrl, // PayPal cancel URL (dynamic based on request origin)
-      }),
-    });
-    
-    const paymentResponse = await env.payment_worker.fetch(paymentRequest);
-    
-    if (!paymentResponse.ok) {
-      let errorText;
-      try {
-        const errorData = await paymentResponse.json();
-        errorText = errorData.error?.message || errorData.message || JSON.stringify(errorData);
-      } catch (e) {
-        errorText = await paymentResponse.text();
-      }
-      console.error('[order-saga] Failed to create payment order:', paymentResponse.status, errorText);
-      throw new ConflictError(`Failed to create payment order: ${errorText}`);
-    }
+      {
+        url: 'https://workers.dev/paypal/create',
+        method: 'POST',
+        system: 'paypal',
+        operation: 'create_order',
+        amount: paymentAmount,
+        currency: 'INR',
+      },
+      request
+    );
     
     let paymentData;
     try {
-      paymentData = await paymentResponse.json();
+      paymentData = await paypalResponse.json();
       console.log('[order-saga] Payment order created:', paymentData.orderId);
     } catch (error) {
       console.error('[order-saga] Failed to parse payment response:', error);
@@ -302,6 +417,11 @@ export async function createOrderSaga(
     
     sagaState.paypalOrderId = paymentData.orderId;
     sagaState.paymentCreated = true;
+    
+    addSpanLog(sagaSpan, 'PayPal order created', { 
+      paypalOrderId: paymentData.orderId,
+      amount: paymentAmount 
+    }, request);
     
     compensationSteps.push({
       name: 'createPayment',
@@ -372,6 +492,14 @@ export async function createOrderSaga(
     sagaState.orderId = order.orderId;
     sagaState.orderCreated = true;
     
+    addSpanLog(sagaSpan, 'Order record created', { 
+      orderId: order.orderId,
+      totalAmount 
+    }, request);
+    
+    sagaSpan.setAttribute('order.id', order.orderId);
+    sagaSpan.setAttribute('order.total_amount', totalAmount);
+    
     compensationSteps.push({
       name: 'createOrder',
       compensate: async () => {
@@ -425,6 +553,15 @@ export async function createOrderSaga(
       worker: 'orders-worker',
     }, apiKey, ctx);
     
+    addSpanLog(sagaSpan, 'Order creation saga completed successfully', {
+      orderId: sagaState.orderId,
+      paypalOrderId: sagaState.paypalOrderId,
+      approvalUrl: approvalLink.href,
+    }, request);
+    
+    sagaSpan.setStatus({ code: 1 }); // OK
+    sagaSpan.end();
+    
     // Return order details with PayPal approval URL
     // Stock and cart will be handled after payment capture
     return {
@@ -443,6 +580,18 @@ export async function createOrderSaga(
       orderId: sagaState.orderId || null,
       worker: 'orders-worker',
     }, apiKey, ctx);
+    
+    addSpanLog(sagaSpan, 'Order creation saga failed', {
+      error: error.message,
+      orderId: sagaState.orderId || null,
+    }, request);
+    
+    sagaSpan.setStatus({ 
+      code: 2, // ERROR
+      message: error.message 
+    });
+    sagaSpan.recordException(error);
+    sagaSpan.end();
     
     // Compensate: Execute compensation steps in reverse order
     console.error('Saga failed, compensating:', error);

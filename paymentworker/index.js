@@ -1,7 +1,7 @@
 import { Router } from 'itty-router';
 import { errorHandler } from '../shared/utils/errors.js';
 import { addCorsHeaders, handleOptions } from '../shared/utils/cors.js';
-import { instrumentHandler, initRequestTrace, addTraceHeaders } from '../shared/utils/tracing.js';
+import { instrumentHandler, initRequestTrace, addTraceHeaders, createOtelConfig } from '../shared/utils/tracing.js';
 import * as paymentController from './controllers/paymentController.js';
 
 const router = Router();
@@ -32,97 +32,79 @@ router.all('*', () => new Response('Not Found', { status: 404 }));
 
 const handler = {
   async fetch(request, env, ctx) {
-    // Extract trace context from incoming request (for inter-worker calls)
-    // This ensures the entire transaction shows as one trace in Honeycomb
-    const { withTraceContext } = await import('../shared/utils/otel.js');
-    const isWorkerRequest = request.headers.get('X-Worker-Request') === 'true';
+    const url = new URL(request.url);
     
-    // Execute the handler within the extracted trace context if it's an inter-worker request
-    if (isWorkerRequest) {
-      return await withTraceContext(request.headers, async () => {
-        // Initialize request tracing with CF Ray ID (within the trace context)
-        initRequestTrace(request, 'payment-worker');
+    // Extract trace context from incoming request (for distributed tracing)
+    // This ensures traces from other workers or external clients are properly linked
+    const { withTraceContext, getTraceContext, getCfRayId } = await import('../shared/utils/otel.js');
+    
+    // Always try to extract and use trace context from incoming request
+    // If no trace context exists, OpenTelemetry will create a new trace
+    return await withTraceContext(request.headers, async () => {
+      // Initialize request tracing with CF Ray ID (within the trace context)
+      initRequestTrace(request, 'payment-worker');
+      
+      // Log structured JSON with trace IDs and CF Ray ID
+      const traceContext = getTraceContext();
+      const cfRayId = getCfRayId(request);
+      const isWorkerRequest = request.headers.get('X-Worker-Request') === 'true';
+      
+      console.log(JSON.stringify({
+        message: `[payment-worker] ${request.method} ${url.pathname}`,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        cfRayId: cfRayId,
+        method: request.method,
+        path: url.pathname,
+        service: 'payment-worker',
+        isWorkerRequest: isWorkerRequest,
+      }));
+      
+      try {
+        let response = await router.handle(request, env, ctx).catch((error) => {
+          return errorHandler(error, request);
+        });
         
-        // Log structured JSON with trace IDs and CF Ray ID
-        const { getTraceContext, getCfRayId } = await import('../shared/utils/otel.js');
-        const traceContext = getTraceContext();
-        const cfRayId = getCfRayId(request);
-        console.log(JSON.stringify({
-          message: `[payment-worker] ${request.method} ${new URL(request.url).pathname}`,
-          traceId: traceContext.traceId,
-          spanId: traceContext.spanId,
-          cfRayId: cfRayId,
-          method: request.method,
-          path: new URL(request.url).pathname,
-          service: 'payment-worker',
-          isWorkerRequest: true,
-        }));
-        
-        try {
-          const response = await router.handle(request, env, ctx).catch((error) => {
-            return errorHandler(error, request);
-          });
-          const corsResponse = addCorsHeaders(response || new Response('Not Found', { status: 404 }), request);
-          return addTraceHeaders(corsResponse, request);
-        } catch (error) {
-          const errorResponse = errorHandler(error, request);
-          const corsResponse = addCorsHeaders(errorResponse, request);
-          return addTraceHeaders(corsResponse, request);
+        // If router returns null/undefined, create error response
+        if (!response) {
+          console.error('[payment-worker] Router returned null/undefined');
+          response = new Response(
+            JSON.stringify({
+              error: {
+                code: 'NOT_FOUND',
+                message: 'Route not found',
+              },
+            }),
+            {
+              status: 404,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
         }
-      });
-    }
-    
-    // For non-inter-worker requests, proceed normally
-    // Initialize request tracing with CF Ray ID
-    initRequestTrace(request, 'payment-worker');
-    
-    // Log structured JSON with trace IDs and CF Ray ID
-    const { getTraceContext, getCfRayId } = await import('../shared/utils/otel.js');
-    const traceContext = getTraceContext();
-    const cfRayId = getCfRayId(request);
-    console.log(JSON.stringify({
-      message: `[payment-worker] ${request.method} ${new URL(request.url).pathname}`,
-      traceId: traceContext.traceId,
-      spanId: traceContext.spanId,
-      cfRayId: cfRayId,
-      method: request.method,
-      path: new URL(request.url).pathname,
-      service: 'payment-worker',
-      isWorkerRequest: isWorkerRequest,
-    }));
-    
-    try {
-      const response = await router.handle(request, env, ctx).catch((error) => {
-        return errorHandler(error, request);
-      });
-      const corsResponse = addCorsHeaders(response || new Response('Not Found', { status: 404 }), request);
-      return addTraceHeaders(corsResponse, request);
-    } catch (error) {
-      const errorResponse = errorHandler(error, request);
-      const corsResponse = addCorsHeaders(errorResponse, request);
-      return addTraceHeaders(corsResponse, request);
-    }
+        
+        const corsResponse = addCorsHeaders(response, request);
+        return addTraceHeaders(corsResponse, request);
+      } catch (error) {
+        console.error(JSON.stringify({
+          message: '[payment-worker] Fetch handler error',
+          error: error.message,
+          stack: error.stack,
+          traceId: getTraceContext().traceId,
+          spanId: getTraceContext().spanId,
+          cfRayId: getCfRayId(request),
+          service: 'payment-worker',
+        }));
+        const errorResponse = errorHandler(error, request);
+        const corsResponse = addCorsHeaders(errorResponse, request);
+        return addTraceHeaders(corsResponse, request);
+      }
+    });
   },
 };
 
 // OpenTelemetry configuration for Honeycomb
-const otelConfig = (env) => ({
-  exporter: {
-    url: env.HONEYCOMB_ENDPOINT || 'https://api.honeycomb.io/v1/traces',
-    headers: {
-      'x-honeycomb-team': env.HONEYCOMB_API_KEY || '',
-      'x-honeycomb-dataset': env.HONEYCOMB_DATASET || 'payment-worker',
-    },
-  },
-  service: {
-    name: 'payment-worker',
-    version: env.SERVICE_VERSION || '1.0.0',
-  },
-  fetchInstrumentation: {
-    enabled: true,
-    propagateTraceContext: true,
-  },
-});
+// Using unified dataset for distributed tracing across all workers
+const otelConfig = (env) => createOtelConfig(env, 'ecommerce-platform');
 
 // Export instrumented handler
 export default instrumentHandler(handler, otelConfig);

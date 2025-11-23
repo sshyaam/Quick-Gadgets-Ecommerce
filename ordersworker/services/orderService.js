@@ -44,8 +44,8 @@ export async function getOrdersByUserId(userId, page, limit, db, status = null, 
  * @param {string} frontendOrigin - Frontend origin URL for PayPal return URLs
  * @returns {Promise<Object>} Created order with PayPal approval URL
  */
-export async function createOrder(userId, orderData, env, frontendOrigin = null, ctx = null) {
-  return await createOrderSaga(userId, orderData, env, frontendOrigin, ctx);
+export async function createOrder(userId, orderData, env, frontendOrigin = null, ctx = null, request = null) {
+  return await createOrderSaga(userId, orderData, env, frontendOrigin, ctx, request);
 }
 
 /**

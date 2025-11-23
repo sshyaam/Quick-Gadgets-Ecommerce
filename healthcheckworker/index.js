@@ -1,6 +1,7 @@
 import { Router } from 'itty-router';
 import { errorHandler } from '../shared/utils/errors.js';
 import { addCorsHeaders, handleOptions } from '../shared/utils/cors.js';
+import { instrumentHandler, initRequestTrace, addTraceHeaders, createOtelConfig } from '../shared/utils/tracing.js';
 
 const router = Router();
 
@@ -378,17 +379,97 @@ router.get('/health', async (request, env) => {
 // 404 handler
 router.all('*', () => new Response('Not Found', { status: 404 }));
 
-export default {
+const handler = {
   async fetch(request, env, ctx) {
-    try {
-      const response = await router.handle(request, env, ctx).catch((error) => {
-        return errorHandler(error, request);
-      });
-      return addCorsHeaders(response || new Response('Not Found', { status: 404 }), request);
-    } catch (error) {
-      const errorResponse = errorHandler(error, request);
-      return addCorsHeaders(errorResponse, request);
-    }
+    const url = new URL(request.url);
+    
+    // Extract trace context from incoming request (for distributed tracing)
+    // This ensures traces from other workers or external clients are properly linked
+    const { withTraceContext, getTraceContext, getCfRayId } = await import('../shared/utils/otel.js');
+    
+    // Always try to extract and use trace context from incoming request
+    // If no trace context exists, OpenTelemetry will create a new trace
+    return await withTraceContext(request.headers, async () => {
+      // Initialize request tracing with CF Ray ID (within the trace context)
+      initRequestTrace(request, 'healthcheck-worker');
+      
+      // Log structured JSON with trace IDs and CF Ray ID
+      const traceContext = getTraceContext();
+      const cfRayId = getCfRayId(request);
+      const isWorkerRequest = request.headers.get('X-Worker-Request') === 'true';
+      
+      console.log(JSON.stringify({
+        message: `[healthcheck-worker] ${request.method} ${url.pathname}`,
+        traceId: traceContext.traceId,
+        spanId: traceContext.spanId,
+        cfRayId: cfRayId,
+        method: request.method,
+        path: url.pathname,
+        service: 'healthcheck-worker',
+        isWorkerRequest: isWorkerRequest,
+      }));
+      
+      try {
+        let response = await router.handle(request, env, ctx).catch((error) => {
+          return errorHandler(error, request);
+        });
+        
+        // If router returns null/undefined, create error response
+        if (!response) {
+          console.error('[healthcheck-worker] Router returned null/undefined');
+          response = new Response(
+            JSON.stringify({
+              error: {
+                code: 'NOT_FOUND',
+                message: 'Route not found',
+              },
+            }),
+            {
+              status: 404,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        
+        // Add CORS headers
+        response = addCorsHeaders(response, request);
+        
+        // Add trace headers for client correlation
+        response = addTraceHeaders(response, request);
+        
+        // Log structured JSON response
+        console.log(JSON.stringify({
+          message: `[healthcheck-worker] Returning response with status: ${response.status}`,
+          traceId: traceContext.traceId,
+          spanId: traceContext.spanId,
+          cfRayId: cfRayId,
+          status: response.status,
+          service: 'healthcheck-worker',
+        }));
+        
+        return response;
+      } catch (error) {
+        console.error(JSON.stringify({
+          message: '[healthcheck-worker] Fetch handler error',
+          error: error.message,
+          stack: error.stack,
+          traceId: getTraceContext().traceId,
+          spanId: getTraceContext().spanId,
+          cfRayId: getCfRayId(request),
+          service: 'healthcheck-worker',
+        }));
+        const errorResponse = errorHandler(error, request);
+        const corsResponse = addCorsHeaders(errorResponse, request);
+        return addTraceHeaders(corsResponse, request);
+      }
+    });
   },
 };
+
+// OpenTelemetry configuration for Honeycomb
+// Using unified dataset for distributed tracing across all workers
+const otelConfig = (env) => createOtelConfig(env, 'healthcheck-worker');
+
+// Export instrumented handler
+export default instrumentHandler(handler, otelConfig);
 
