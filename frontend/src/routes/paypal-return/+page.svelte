@@ -7,8 +7,47 @@
 	let loading = true;
 	let error = null;
 	let message = 'Processing payment...';
+	let paymentCompleted = false;
 
 	onMount(async () => {
+		// Notify parent window if this tab is closed before payment completes
+		const handleBeforeUnload = () => {
+			if (!paymentCompleted && window.opener && !window.opener.closed) {
+				// Try to send a message before the window closes
+				try {
+					window.opener.postMessage({
+						type: 'PAYPAL_WINDOW_CLOSED',
+						message: 'PayPal window was closed before payment completion'
+					}, window.location.origin);
+				} catch (e) {
+					console.warn('Could not notify parent window:', e);
+				}
+			}
+		};
+		
+		window.addEventListener('beforeunload', handleBeforeUnload);
+		
+		// Also listen for visibility change (tab switching might trigger this)
+		const handleVisibilityChange = () => {
+			if (document.hidden && !paymentCompleted && window.opener && !window.opener.closed) {
+				// Tab was hidden - might be closing
+				setTimeout(() => {
+					if (document.hidden && !paymentCompleted) {
+						try {
+							window.opener.postMessage({
+								type: 'PAYPAL_WINDOW_CLOSED',
+								message: 'PayPal window was closed before payment completion'
+							}, window.location.origin);
+						} catch (e) {
+							console.warn('Could not notify parent window:', e);
+						}
+					}
+				}, 1000);
+			}
+		};
+		
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		
 		try {
 			// Extract PayPal token from URL
 			const urlParams = new URLSearchParams(window.location.search);
@@ -37,6 +76,7 @@
 				const result = await ordersApi.capturePayment(orderId, paypalOrderId);
 
 				if (result && result.success) {
+					paymentCompleted = true;
 					message = 'Payment successful! Redirecting to orders...';
 					// Clear any stored data
 					localStorage.removeItem('pendingOrderId');
@@ -68,6 +108,7 @@
 				const result = await ordersApi.capturePayment(storedOrderId, storedPaypalOrderId);
 
 				if (result && result.success) {
+					paymentCompleted = true;
 					message = 'Payment successful! Redirecting to orders...';
 					// Clear stored data
 					localStorage.removeItem('pendingOrderId');
@@ -121,6 +162,12 @@
 				}
 			}, 3000);
 		}
+		
+		// Return cleanup function
+		return () => {
+			window.removeEventListener('beforeunload', handleBeforeUnload);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
 	});
 </script>
 

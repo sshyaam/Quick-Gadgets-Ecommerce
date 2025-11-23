@@ -18,6 +18,9 @@
 	let showPayPalLoading = false;
 	let paypalWindow = null;
 	let paypalCheckInterval = null;
+	let paypalTimerInterval = null;
+	let paypalTimeoutTimer = null;
+	let timeRemaining = 15 * 60; // 15 minutes in seconds
 	let currentOrderId = null;
 	
 	// Address management
@@ -115,6 +118,10 @@
 				// Payment failed
 				closePayPalLoading();
 				error = event.data.message || 'Payment processing failed. Please try again.';
+			} else if (event.data && event.data.type === 'PAYPAL_WINDOW_CLOSED') {
+				// PayPal window was closed prematurely
+				closePayPalLoading();
+				error = 'Payment window was closed. If you completed the payment, please check your orders page.';
 			}
 		};
 		
@@ -125,6 +132,12 @@
 			window.removeEventListener('message', handleMessage);
 			if (paypalCheckInterval) {
 				clearInterval(paypalCheckInterval);
+			}
+			if (paypalTimerInterval) {
+				clearInterval(paypalTimerInterval);
+			}
+			if (paypalTimeoutTimer) {
+				clearTimeout(paypalTimeoutTimer);
 			}
 			if (paypalWindow && !paypalWindow.closed) {
 				paypalWindow.close();
@@ -137,6 +150,14 @@
 		if (paypalCheckInterval) {
 			clearInterval(paypalCheckInterval);
 			paypalCheckInterval = null;
+		}
+		if (paypalTimerInterval) {
+			clearInterval(paypalTimerInterval);
+			paypalTimerInterval = null;
+		}
+		if (paypalTimeoutTimer) {
+			clearTimeout(paypalTimeoutTimer);
+			paypalTimeoutTimer = null;
 		}
 		if (paypalWindow && !paypalWindow.closed) {
 			paypalWindow.close();
@@ -355,13 +376,31 @@
 	
 	function closePayPalLoading() {
 		showPayPalLoading = false;
+		timeRemaining = 15 * 60; // Reset timer
+		
+		// Clear all intervals and timers
 		if (paypalCheckInterval) {
 			clearInterval(paypalCheckInterval);
 			paypalCheckInterval = null;
 		}
-		if (paypalWindow && !paypalWindow.closed) {
-			paypalWindow.close();
+		if (paypalTimerInterval) {
+			clearInterval(paypalTimerInterval);
+			paypalTimerInterval = null;
 		}
+		if (paypalTimeoutTimer) {
+			clearTimeout(paypalTimeoutTimer);
+			paypalTimeoutTimer = null;
+		}
+		
+		// Close PayPal window if still open
+		if (paypalWindow && !paypalWindow.closed) {
+			try {
+				paypalWindow.close();
+			} catch (e) {
+				console.warn('Could not close PayPal window:', e);
+			}
+		}
+		paypalWindow = null;
 		loading = false;
 	}
 	
@@ -374,6 +413,13 @@
 			localStorage.removeItem('pendingPaypalOrderId');
 			currentOrderId = null;
 		}
+	}
+	
+	// Format time remaining as MM:SS
+	function formatTime(seconds) {
+		const mins = Math.floor(seconds / 60);
+		const secs = seconds % 60;
+		return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 	}
 
 	function selectSavedAddress(addressId) {
@@ -567,14 +613,45 @@
 				// Show loading overlay
 				showPayPalLoading = true;
 				loading = false; // Don't show button loading, show overlay instead
+				timeRemaining = 15 * 60; // Reset timer to 15 minutes
+				
+				// Start countdown timer
+				paypalTimerInterval = setInterval(() => {
+					if (timeRemaining > 0) {
+						timeRemaining--;
+					} else {
+						// Timer expired - close PayPal window
+						clearInterval(paypalTimerInterval);
+						paypalTimerInterval = null;
+						closePayPalLoading();
+						error = 'Payment session expired (15 minutes). Please try again.';
+						// Clear stored data
+						setTimeout(() => {
+							localStorage.removeItem('pendingOrderId');
+							localStorage.removeItem('pendingPaypalOrderId');
+							currentOrderId = null;
+						}, 5000);
+					}
+				}, 1000); // Update every second
+				
+				// Set timeout to close PayPal window after 15 minutes
+				paypalTimeoutTimer = setTimeout(() => {
+					if (paypalWindow && !paypalWindow.closed) {
+						try {
+							paypalWindow.close();
+						} catch (e) {
+							console.warn('Could not close PayPal window:', e);
+						}
+					}
+				}, 15 * 60 * 1000); // 15 minutes
 				
 				// Check if PayPal window is closed manually
 				paypalCheckInterval = setInterval(() => {
-					if (paypalWindow.closed) {
+					if (paypalWindow && paypalWindow.closed) {
 						// Window was closed manually
 						clearInterval(paypalCheckInterval);
 						paypalCheckInterval = null;
-						showPayPalLoading = false;
+						closePayPalLoading();
 						error = 'Payment window was closed. If you completed the payment, please check your orders page.';
 						// Clear stored data after a delay
 						setTimeout(() => {
@@ -976,7 +1053,16 @@
 				<div class="text-center">
 					<div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
 					<p class="text-gray-700 mb-2">Please complete your payment in the PayPal window.</p>
-					<p class="text-sm text-gray-500">Do not close this page until payment is complete.</p>
+					<p class="text-sm text-gray-500 mb-3">Do not close this page until payment is complete.</p>
+					<div class="mt-4 pt-4 border-t border-gray-200">
+						<p class="text-xs text-gray-500 mb-1">Session will expire in:</p>
+						<p class="text-2xl font-bold {timeRemaining < 60 ? 'text-red-600' : 'text-gray-800'}">
+							{formatTime(timeRemaining)}
+						</p>
+						{#if timeRemaining < 60}
+							<p class="text-xs text-red-600 mt-1">Session expiring soon!</p>
+						{/if}
+					</div>
 				</div>
 			</div>
 		</div>
