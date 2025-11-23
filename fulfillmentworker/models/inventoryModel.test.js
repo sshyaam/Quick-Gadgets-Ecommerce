@@ -132,17 +132,35 @@ describe('inventoryModel', () => {
         available: 100,
       };
       
+      // Mock DO for reserving stock - must be created before getStock call
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              return new Response(JSON.stringify({ reserved: 0 }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            if (url.pathname.includes('/reserve')) {
+              return new Response(JSON.stringify({ success: true, reserved: quantity, totalReserved: quantity }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
+      };
+      
+      // Mock getStock to return stock data
       mockDb = createMockD1WithSequence([
-        { all: { results: [mockWarehouseStock], success: true } }, // Find warehouses with stock
-        {
-          run: {
-            success: true,
-            meta: { changes: 1 },
-          },
-        }, // Update reserved_quantity
+        { first: { product_id: productId, quantity: 100, updated_at: '2024-01-01T00:00:00Z' } }, // getStock call
       ]);
       
-      const result = await reserveStock(mockDb, productId, quantity);
+      const result = await reserveStock(mockDb, productId, quantity, mockDO, 'test-order-id');
       
       expect(result).to.be.true;
     });
@@ -151,26 +169,31 @@ describe('inventoryModel', () => {
   describe('releaseReservedStock', () => {
     it('should release reserved stock', async () => {
       const productId = 'test-product-id';
-      const quantity = 10;
+      const orderId = 'test-order-id';
       
-      const mockWarehouseStock = {
-        inventory_id: 'inv-1',
-        warehouse_id: 'warehouse-1',
-        quantity: 100,
-        reserved_quantity: 20,
+      // Mock DO for releasing stock
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/release')) {
+              return new Response(JSON.stringify({ success: true }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
       };
       
       mockDb = createMockD1WithSequence([
-        { all: { results: [mockWarehouseStock], success: true } }, // Find warehouses with reserved stock
-        {
-          run: {
-            success: true,
-            meta: { changes: 1 },
-          },
-        }, // Update reserved_quantity
+        // No DB calls needed for release (it's handled by DO)
       ]);
       
-      const result = await releaseReservedStock(mockDb, productId, quantity);
+      const result = await releaseReservedStock(mockDb, productId, orderId, mockDO);
       
       expect(result).to.be.true;
     });

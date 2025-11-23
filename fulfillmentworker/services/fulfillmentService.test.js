@@ -28,15 +28,32 @@ describe('fulfillmentService', () => {
       const mockStock = {
         product_id: productId,
         quantity: 100,
-        reserved_quantity: 20,
         updated_at: '2024-01-01T00:00:00Z',
+      };
+      
+      // Mock DO to return reserved quantity
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              return new Response(JSON.stringify({ reserved: 20 }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
       };
       
       mockDb = createMockD1WithSequence([
         { first: mockStock },
       ]);
       
-      const result = await getProductStock(productId, mockDb);
+      const result = await getProductStock(productId, mockDb, mockDO);
       
       expect(result).to.have.property('productId', productId);
       expect(result).to.have.property('quantity', 100);
@@ -64,15 +81,32 @@ describe('fulfillmentService', () => {
       const mockStock = {
         product_id: productId,
         quantity: 50,
-        reserved_quantity: 100, // More reserved than available
         updated_at: '2024-01-01T00:00:00Z',
+      };
+      
+      // Mock DO to return more reserved than available
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              return new Response(JSON.stringify({ reserved: 100 }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
       };
       
       mockDb = createMockD1WithSequence([
         { first: mockStock },
       ]);
       
-      const result = await getProductStock(productId, mockDb);
+      const result = await getProductStock(productId, mockDb, mockDO);
       
       expect(result).to.have.property('available', 0); // Should be 0, not negative
     });
@@ -82,15 +116,35 @@ describe('fulfillmentService', () => {
     it('should return stock map for multiple products', async () => {
       const productIds = ['product-1', 'product-2'];
       const mockStocks = [
-        { product_id: 'product-1', quantity: 100, reserved_quantity: 10, updated_at: '2024-01-01T00:00:00Z' },
-        { product_id: 'product-2', quantity: 50, reserved_quantity: 5, updated_at: '2024-01-01T00:00:00Z' },
+        { product_id: 'product-1', quantity: 100, updated_at: '2024-01-01T00:00:00Z' },
+        { product_id: 'product-2', quantity: 50, updated_at: '2024-01-01T00:00:00Z' },
       ];
+      
+      // Mock DO to return reserved quantities
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              const productId = id.toString();
+              const reserved = productId === 'product-1' ? 10 : productId === 'product-2' ? 5 : 0;
+              return new Response(JSON.stringify({ reserved }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
+      };
       
       mockDb = createMockD1WithSequence([
         { all: { results: mockStocks, success: true } },
       ]);
       
-      const result = await getProductStocks(productIds, mockDb);
+      const result = await getProductStocks(productIds, mockDb, mockDO);
       
       expect(result).to.be.an('object');
       expect(result['product-1']).to.have.property('quantity', 100);
@@ -178,20 +232,37 @@ describe('fulfillmentService', () => {
         available: 80,
       };
       
-      // getAvailableStock calls getStock internally
-      // reserveStock needs to find warehouses with available stock
+      // Mock DO for reserving stock
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              return new Response(JSON.stringify({ reserved: 0 }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            if (url.pathname.includes('/reserve')) {
+              return new Response(JSON.stringify({ success: true, reserved: quantity, totalReserved: quantity }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
+      };
+      
+      // getAvailableStock calls getStock internally, which also calls DO for reserved status
+      // reserveStock also calls getStock
       mockDb = createMockD1WithSequence([
-        { first: mockStock }, // getAvailableStock -> getStock
-        { all: { results: [mockWarehouseStock], success: true } }, // reserveStock -> find warehouses with stock
-        {
-          run: {
-            success: true,
-            meta: { changes: 1 },
-          },
-        }, // reserveStock -> update reserved_quantity
+        { first: { product_id: productId, quantity: 100, updated_at: '2024-01-01T00:00:00Z' } }, // getAvailableStock -> getStock
+        { first: { product_id: productId, quantity: 100, updated_at: '2024-01-01T00:00:00Z' } }, // reserveStock -> getStock
       ]);
       
-      const result = await reserveProductStock(productId, quantity, mockDb);
+      const result = await reserveProductStock(productId, quantity, mockDb, null, mockDO, 'test-order-id');
       
       expect(result).to.be.true;
     });
@@ -199,10 +270,29 @@ describe('fulfillmentService', () => {
     it('should throw ConflictError when insufficient stock', async () => {
       const productId = 'test-product-id';
       const quantity = 100;
+      const orderId = 'test-order-id';
       const mockStock = {
         product_id: productId,
         quantity: 50,
-        reserved_quantity: 0,
+        updated_at: '2024-01-01T00:00:00Z',
+      };
+      
+      // Mock DO to return reserved status
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/status')) {
+              return new Response(JSON.stringify({ reserved: 0 }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
       };
       
       mockDb = createMockD1WithSequence([
@@ -210,7 +300,7 @@ describe('fulfillmentService', () => {
       ]);
       
       try {
-        await reserveProductStock(productId, quantity, mockDb);
+        await reserveProductStock(productId, quantity, mockDb, null, mockDO, orderId);
         expect.fail('Should have thrown ConflictError');
       } catch (error) {
         expect(error).to.be.instanceOf(ConflictError);
@@ -222,26 +312,31 @@ describe('fulfillmentService', () => {
   describe('releaseProductStock', () => {
     it('should release reserved stock successfully', async () => {
       const productId = 'test-product-id';
-      const quantity = 10;
+      const orderId = 'test-order-id';
       
-      const mockWarehouseStock = {
-        inventory_id: 'inv-1',
-        warehouse_id: 'warehouse-1',
-        quantity: 100,
-        reserved_quantity: 20,
+      // Mock DO for releasing stock
+      const mockDO = {
+        idFromName: (name) => ({ toString: () => name }),
+        get: (id) => ({
+          fetch: async (request) => {
+            const url = typeof request === 'string' ? new URL(request) : new URL(request.url);
+            if (url.pathname.includes('/release')) {
+              return new Response(JSON.stringify({ success: true }), {
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            return new Response(JSON.stringify({ reserved: 0 }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+        })
       };
       
       mockDb = createMockD1WithSequence([
-        { all: { results: [mockWarehouseStock], success: true } }, // releaseReservedStock -> find warehouses
-        {
-          run: {
-            success: true,
-            meta: { changes: 1 },
-          },
-        }, // releaseReservedStock -> update
+        // No DB calls needed for release (it's handled by DO)
       ]);
       
-      const result = await releaseProductStock(productId, quantity, mockDb);
+      const result = await releaseProductStock(productId, orderId, mockDb, null, mockDO);
       
       expect(result).to.be.true;
     });

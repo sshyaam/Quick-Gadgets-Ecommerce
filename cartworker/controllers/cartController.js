@@ -223,26 +223,30 @@ export async function addItem(request, env, ctx = null) {
   const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;
   const apiKey = env.INTER_WORKER_API_KEY;
   
+  let body = null;
+  let validatedValue = null;
+  
   try {
-    const body = await request.json();
+    body = await request.json();
     
     // Validate
     const { error, value } = addItemSchema.validate(body);
     if (error) {
       throw new ValidationError(error.details[0].message, error.details);
     }
+    validatedValue = value;
     
     // Log item addition start
     await sendLog(logWorkerBindingOrUrl, 'debug', 'Adding item to cart', {
       userId: request.user.userId,
-      productId: value.productId,
-      quantity: value.quantity,
+      productId: validatedValue.productId,
+      quantity: validatedValue.quantity,
       worker: 'cart-worker',
     }, apiKey, ctx);
     
     const cart = await cartService.addItemToCart(
       request.user.userId,
-      value,
+      validatedValue,
       env.cart_db,
       env.catalog_worker, // Service binding for product details
       env.pricing_worker, // Service binding
@@ -253,8 +257,8 @@ export async function addItem(request, env, ctx = null) {
     // Log successful item addition
     await sendLog(logWorkerBindingOrUrl, 'event', 'Item added to cart', {
       userId: request.user.userId,
-      productId: value.productId,
-      quantity: value.quantity,
+      productId: validatedValue.productId,
+      quantity: validatedValue.quantity,
       cartId: cart.cartId,
       totalItems: cart.items?.length || 0,
       worker: 'cart-worker',
@@ -272,8 +276,8 @@ export async function addItem(request, env, ctx = null) {
     // Log item addition failure
     await sendLog(logWorkerBindingOrUrl, 'error', 'Failed to add item to cart', {
       userId: request.user.userId,
-      productId: body.productId || null,
-      quantity: body.quantity || null,
+      productId: (validatedValue?.productId || body?.productId) || null,
+      quantity: (validatedValue?.quantity || body?.quantity) || null,
       error: error.message,
       worker: 'cart-worker',
     }, apiKey, ctx);
