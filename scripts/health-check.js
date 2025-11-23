@@ -14,50 +14,52 @@ const MAX_RETRIES = 3;
 const RETRY_DELAY = 5000; // 5 seconds
 
 // Worker URL mapping (adjust based on your Cloudflare setup)
+// Production names use hyphens (auth-worker) as defined in wrangler configs
+// Preview names use codebase names with -preview suffix (authworker-preview) as deployed by deploy-worker.js
 const WORKER_URLS = {
   authworker: {
     production: process.env.AUTH_WORKER_URL || 'https://auth-worker.shyaamdps.workers.dev',
-    preview: process.env.AUTH_WORKER_PREVIEW_URL || 'https://auth-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.AUTH_WORKER_PREVIEW_URL || 'https://authworker-preview.shyaamdps.workers.dev'
   },
   cartworker: {
     production: process.env.CART_WORKER_URL || 'https://cart-worker.shyaamdps.workers.dev',
-    preview: process.env.CART_WORKER_PREVIEW_URL || 'https://cart-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.CART_WORKER_PREVIEW_URL || 'https://cartworker-preview.shyaamdps.workers.dev'
   },
   catalogworker: {
     production: process.env.CATALOG_WORKER_URL || 'https://catalog-worker.shyaamdps.workers.dev',
-    preview: process.env.CATALOG_WORKER_PREVIEW_URL || 'https://catalog-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.CATALOG_WORKER_PREVIEW_URL || 'https://catalogworker-preview.shyaamdps.workers.dev'
   },
   fulfillmentworker: {
     production: process.env.FULFILLMENT_WORKER_URL || 'https://fulfillment-worker.shyaamdps.workers.dev',
-    preview: process.env.FULFILLMENT_WORKER_PREVIEW_URL || 'https://fulfillment-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.FULFILLMENT_WORKER_PREVIEW_URL || 'https://fulfillmentworker-preview.shyaamdps.workers.dev'
   },
   healthcheckworker: {
     production: process.env.HEALTHCHECK_WORKER_URL || 'https://healthcheck-worker.shyaamdps.workers.dev',
-    preview: process.env.HEALTHCHECK_WORKER_PREVIEW_URL || 'https://healthcheck-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.HEALTHCHECK_WORKER_PREVIEW_URL || 'https://healthcheckworker-preview.shyaamdps.workers.dev'
   },
   logworker: {
     production: process.env.LOG_WORKER_URL || 'https://log-worker.shyaamdps.workers.dev',
-    preview: process.env.LOG_WORKER_PREVIEW_URL || 'https://log-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.LOG_WORKER_PREVIEW_URL || 'https://logworker-preview.shyaamdps.workers.dev'
   },
   ordersworker: {
     production: process.env.ORDERS_WORKER_URL || 'https://orders-worker.shyaamdps.workers.dev',
-    preview: process.env.ORDERS_WORKER_PREVIEW_URL || 'https://orders-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.ORDERS_WORKER_PREVIEW_URL || 'https://ordersworker-preview.shyaamdps.workers.dev'
   },
   paymentworker: {
     production: process.env.PAYMENT_WORKER_URL || 'https://payment-worker.shyaamdps.workers.dev',
-    preview: process.env.PAYMENT_WORKER_PREVIEW_URL || 'https://payment-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.PAYMENT_WORKER_PREVIEW_URL || 'https://paymentworker-preview.shyaamdps.workers.dev'
   },
   pricingworker: {
     production: process.env.PRICING_WORKER_URL || 'https://pricing-worker.shyaamdps.workers.dev',
-    preview: process.env.PRICING_WORKER_PREVIEW_URL || 'https://pricing-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.PRICING_WORKER_PREVIEW_URL || 'https://pricingworker-preview.shyaamdps.workers.dev'
   },
   ratingworker: {
     production: process.env.RATING_WORKER_URL || 'https://rating-worker.shyaamdps.workers.dev',
-    preview: process.env.RATING_WORKER_PREVIEW_URL || 'https://rating-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.RATING_WORKER_PREVIEW_URL || 'https://ratingworker-preview.shyaamdps.workers.dev'
   },
   realtimeworker: {
     production: process.env.REALTIME_WORKER_URL || 'https://realtime-worker.shyaamdps.workers.dev',
-    preview: process.env.REALTIME_WORKER_PREVIEW_URL || 'https://realtime-worker-preview.shyaamdps.workers.dev'
+    preview: process.env.REALTIME_WORKER_PREVIEW_URL || 'https://realtimeworker-preview.shyaamdps.workers.dev'
   }
 };
 
