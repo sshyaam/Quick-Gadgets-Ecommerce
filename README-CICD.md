@@ -69,13 +69,6 @@ chmod +x scripts/*.js .husky/pre-commit .husky/commit-msg
 4. Health check each deployed worker
 5. Rollback if health check fails
 
-### 3. Commit Message Check (`.github/workflows/commit-message-check.yml`)
-
-**Triggers**: When a PR is opened, updated, or edited
-
-**Steps**:
-1. Validates all commit messages in the PR follow conventional commit format
-
 ## Required GitHub Secrets
 
 Add these secrets to your GitHub repository:
@@ -137,8 +130,7 @@ npm run rollback-worker ordersworker production
    - Commit message is validated
 
 2. **Create PR**:
-   - GitHub Actions validates commit messages
-   - Runs lint and tests
+   - GitHub Actions runs lint and tests
    - Deploys changed workers to preview
    - Health checks preview deployments
    - Rolls back if health check fails
