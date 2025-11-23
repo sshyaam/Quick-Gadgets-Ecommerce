@@ -13,7 +13,8 @@
 	// Backend returns already-grouped orders as an object: { "2025-01-20": [orders...], ... }
 	let groupedOrders = data.orders || {};
 	let pagination = data.pagination || { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false };
-	let loading = false;
+	// Start with loading true if we don't have orders data yet
+	let loading = (data.orders === null || data.orders === undefined) && !data.requiresAuth;
 	let requiresAuth = data.requiresAuth || false;
 	
 	// Filter state - initialize from URL params on mount
@@ -199,6 +200,10 @@
 		} else if (!accessToken && !hasOrders && !data.clientSideAuth) {
 			// No token, no orders, and server didn't indicate client-side auth check
 			requiresAuth = data.requiresAuth || false;
+			loading = false; // Stop loading if we know auth is required
+		} else if (hasOrders) {
+			// We have orders from server, stop loading
+			loading = false;
 		}
 		
 		// Cleanup

@@ -9,13 +9,15 @@
 	export let data;
 
 	let cartData = data.cart;
-	let isLoadingCart = false; // Track initial cart loading
+	// Track initial cart loading - start as true if we don't have data yet and might need to load it
+	let isLoadingCart = (data.cart === null || data.cart === undefined) && !data.requiresAuth;
 	
 	// Load cart on client-side if not loaded server-side (for localStorage auth)
 	onMount(async () => {
 		// If we already have cart data from server, use it
 		if (data.cart !== null && data.cart !== undefined) {
 			cartData = data.cart;
+			isLoadingCart = false;
 			return;
 		}
 		
