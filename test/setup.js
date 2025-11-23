@@ -226,6 +226,7 @@ export function createMockR2() {
       if (value instanceof ReadableStream) {
         const chunks = [];
         const reader = value.getReader();
+        // eslint-disable-next-line no-constant-condition
         while (true) {
           const { done, value: chunk } = await reader.read();
           if (done) break;

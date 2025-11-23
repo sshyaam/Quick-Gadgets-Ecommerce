@@ -1100,9 +1100,16 @@ export async function capturePaymentSaga(
     if (env.fulfillment_worker) {
       try {
         console.log('[payment-saga] Releasing reserved stock for failed payment...');
-        const orderItems = typeof order.productData === 'string' 
-          ? JSON.parse(order.productData).items 
-          : order.productData?.items || [];
+        // Get order to access productData
+        const { getOrderById } = await import('../models/orderModel.js');
+        const orderForRelease = await getOrderById(env.orders_db, orderId);
+        if (!orderForRelease) {
+          console.warn('[payment-saga] Order not found for stock release, skipping');
+          throw error;
+        }
+        const orderItems = typeof orderForRelease.productData === 'string' 
+          ? JSON.parse(orderForRelease.productData).items 
+          : orderForRelease.productData?.items || [];
         
         const releasePromises = orderItems.map(async (item) => {
           const releaseHeaders = new Headers({

@@ -7,7 +7,14 @@
     "test": "mocha '**/*.test.js' --recursive --timeout 10000 --ignore 'node_modules/**' --ignore 'frontend/node_modules/**'",
     "test:watch": "mocha '**/*.test.js' --recursive --watch --timeout 10000 --ignore 'node_modules/**' --ignore 'frontend/node_modules/**'",
     "test:coverage": "c8 --reporter=text --reporter=html --reporter=json-summary mocha '**/*.test.js' --recursive --timeout 10000 --ignore 'node_modules/**' --ignore 'frontend/node_modules/**'",
-    "test:coverage:report": "c8 report --reporter=html"
+    "test:coverage:report": "c8 report --reporter=html",
+    "lint": "eslint . --ext .js --ignore-path .gitignore",
+    "lint:fix": "eslint . --ext .js --fix --ignore-path .gitignore",
+    "prepare": "husky install",
+    "detect-changed-workers": "node scripts/detect-changed-workers.js",
+    "deploy-worker": "node scripts/deploy-worker.js",
+    "health-check": "node scripts/health-check.js",
+    "rollback-worker": "node scripts/rollback-worker.js"
   },
   "keywords": [],
   "author": "",
@@ -22,10 +29,15 @@
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
+    "@commitlint/cli": "^18.4.4",
+    "@commitlint/config-conventional": "^18.4.4",
     "c8": "^8.0.1",
     "chai": "^5.1.1",
+    "eslint": "^8.55.0",
+    "husky": "^8.0.3",
     "mocha": "^10.7.3",
     "sinon": "^17.0.1",
+    "undici": "^5.28.4",
     "wrangler": "^3.78.0"
   }
 }

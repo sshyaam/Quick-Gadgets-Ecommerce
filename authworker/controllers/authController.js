@@ -5,7 +5,7 @@
 import * as authService from '../services/authService.js';
 import * as profileService from '../services/profileService.js';
 import { validateApiKey } from '../../shared/utils/interWorker.js';
-import { AuthenticationError, ValidationError } from '../../shared/utils/errors.js';
+import { AuthenticationError, ValidationError, ConflictError } from '../../shared/utils/errors.js';
 import { signupSchema, loginSchema } from '../validation/authValidation.js';
 import { sendLog } from '../../shared/utils/logger.js';
 

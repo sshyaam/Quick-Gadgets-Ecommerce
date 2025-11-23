@@ -1,0 +1,49 @@
+name: Commit Message Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+
+jobs:
+  check-commit-messages:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate commit messages
+        run: |
+          # Get all commits in the PR
+          COMMITS=$(git log origin/${{ github.base_ref }}..HEAD --pretty=format:"%s")
+          
+          # Check each commit message
+          while IFS= read -r commit_msg; do
+            if ! echo "$commit_msg" | grep -qE "^(feat|fix|docs|style|refactor|perf|test|chore|ci|build|revert)(\(.+\))?: .+"; then
+              echo "❌ Invalid commit message: $commit_msg"
+              echo ""
+              echo "Commit message must follow the conventional commit format:"
+              echo "  type(scope): subject"
+              echo ""
+              echo "Examples:"
+              echo "  feat: add new feature"
+              echo "  fix: resolve bug in payment"
+              echo "  feat(orders): implement COD payment"
+              echo ""
+              exit 1
+            fi
+          done <<< "$COMMITS"
+          
+          echo "✅ All commit messages are valid"
+

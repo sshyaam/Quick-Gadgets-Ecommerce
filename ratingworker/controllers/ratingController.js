@@ -245,13 +245,17 @@ export async function createUserRating(request, env, ctx = null) {
   const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;
   const apiKey = env.INTER_WORKER_API_KEY;
   
+  // Declare variables outside try block so they're accessible in catch
+  let body = null;
+  let value = null;
+  
   try {
     console.log('[ratingController] createUserRating called');
     const { orderId } = request.params;
     console.log('[ratingController] orderId:', orderId);
     console.log('[ratingController] request.user:', request.user);
     
-    const body = await request.json();
+    body = await request.json();
     console.log('[ratingController] request body:', body);
     
     const userId = request.user?.userId;
@@ -264,7 +268,7 @@ export async function createUserRating(request, env, ctx = null) {
     console.log('[ratingController] userId:', userId);
     
     // Validate request body
-    const { error, value } = createRatingSchema.validate({
+    const { error, value: validatedValue } = createRatingSchema.validate({
       ...body,
       orderId,
       userId,
@@ -275,6 +279,7 @@ export async function createUserRating(request, env, ctx = null) {
       throw new ValidationError(error.details[0].message, error.details);
     }
     
+    value = validatedValue;
     console.log('[ratingController] Validated data:', value);
   
     // Verify order exists, belongs to user, and is completed
@@ -387,10 +392,11 @@ export async function createUserRating(request, env, ctx = null) {
     console.error('[ratingController] Error constructor:', error.constructor.name);
     
     // Log rating submission failure
+    // value and body are in outer scope, so they should be available
     await sendLog(logWorkerBindingOrUrl, 'error', 'Rating submission failed', {
       userId: request.user?.userId || null,
       orderId: request.params.orderId || null,
-      productId: body?.productId || null,
+      productId: (value?.productId || body?.productId) || null,
       error: error.message,
       worker: 'rating-worker',
     }, apiKey, ctx);
