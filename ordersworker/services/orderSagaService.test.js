@@ -6,7 +6,7 @@ import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import * as orderSagaService from './orderSagaService.js';
 import { ConflictError } from '../../shared/utils/errors.js';
-import { createMockEnv, createMockRequest } from '../../test/setup.js';
+import { createMockEnv, createMockRequest, createMockD1WithSequence } from '../../test/setup.js';
 
 describe('orderSagaService', () => {
   let mockEnv;
@@ -47,6 +47,49 @@ describe('orderSagaService', () => {
         expect(error.message).to.include('Access token required');
       }
     });
+
+    it('should throw ConflictError when cart is empty', async () => {
+      const orderData = {
+        cart: { items: [] },
+        accessToken: 'test-token'
+      };
+      
+      // Mock cart worker to return empty cart
+      mockEnv.cart_worker._setResponse('GET', '/cart', { cartId: 'cart-123', items: [] });
+      
+      try {
+        await orderSagaService.createOrderSaga('user-123', orderData, mockEnv);
+        expect.fail('Should have thrown ConflictError');
+      } catch (error) {
+        expect(error).to.be.instanceOf(ConflictError);
+        expect(error.message).to.include('Cart is empty');
+      }
+    });
+
+    it('should throw ConflictError when cart validation fails', async () => {
+      const orderData = {
+        cart: { items: [{ productId: 'product-1', quantity: 1 }] },
+        accessToken: 'test-token'
+      };
+      
+      // Mock cart worker responses
+      mockEnv.cart_worker._setResponse('GET', '/cart', { 
+        cartId: 'cart-123', 
+        items: [{ productId: 'product-1', quantity: 1 }] 
+      });
+      mockEnv.cart_worker._setResponse('POST', '/cart/validate', { 
+        valid: false, 
+        errors: [{ message: 'Stock unavailable' }] 
+      });
+      
+      try {
+        await orderSagaService.createOrderSaga('user-123', orderData, mockEnv);
+        expect.fail('Should have thrown ConflictError');
+      } catch (error) {
+        expect(error).to.be.instanceOf(ConflictError);
+        expect(error.message).to.include('Cart validation failed');
+      }
+    });
   });
 
   describe('capturePaymentSaga', () => {
@@ -65,17 +108,10 @@ describe('orderSagaService', () => {
   describe('cancelOrderSaga', () => {
     it('should handle order cancellation', async () => {
       // Mock database
-      const mockDb = {
-        prepare: () => ({
-          bind: () => ({
-            first: async () => ({
-              orderId: 'order-123',
-              status: 'pending'
-            }),
-            run: async () => ({ success: true, meta: { changes: 1 } })
-          })
-        })
-      };
+      const mockDb = createMockD1WithSequence([
+        { first: { order_id: 'order-123', status: 'pending', user_id: 'user-123' } },
+        { run: { success: true, meta: { changes: 1 } } }
+      ]);
       mockEnv.orders_db = mockDb;
       
       // Mock service bindings
@@ -117,6 +153,24 @@ describe('orderSagaService', () => {
       } catch (error) {
         expect(error).to.be.instanceOf(ConflictError);
         expect(error.message).to.include('Access token required');
+      }
+    });
+
+    it('should throw ConflictError when cart is empty', async () => {
+      const orderData = {
+        cart: { items: [] },
+        accessToken: 'test-token'
+      };
+      
+      // Mock cart worker to return empty cart
+      mockEnv.cart_worker._setResponse('GET', '/cart', { cartId: 'cart-123', items: [] });
+      
+      try {
+        await orderSagaService.createCODOrderSaga('user-123', orderData, mockEnv);
+        expect.fail('Should have thrown ConflictError');
+      } catch (error) {
+        expect(error).to.be.instanceOf(ConflictError);
+        expect(error.message).to.include('Cart is empty');
       }
     });
   });
