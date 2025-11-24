@@ -122,20 +122,35 @@
 				closePayPalLoading();
 				error = event.data.message || 'Payment processing failed. Please try again.';
 			} else if (event.data && event.data.type === 'PAYPAL_WINDOW_CLOSED') {
-				// PayPal window was closed prematurely - cancel order and release stock
-				closePayPalLoading();
-				if (currentOrderId) {
-					try {
-						await ordersApi.cancelOrder(currentOrderId);
-						console.log('[checkout] Order cancelled due to window close:', currentOrderId);
-					} catch (cancelError) {
-						console.error('[checkout] Failed to cancel order on window close:', cancelError);
+				// PayPal window was closed prematurely - but check if payment actually completed
+				// Sometimes the window close event fires even after successful payment
+				const paymentSuccess = localStorage.getItem('paypalPaymentSuccess') === 'true';
+				
+				if (paymentSuccess) {
+					// Payment actually completed, just window close event fired late
+					// Don't cancel the order
+					closePayPalLoading();
+					message = 'Payment successful! Redirecting to orders...';
+					localStorage.removeItem('paypalPaymentSuccess');
+					setTimeout(() => {
+						goto('/orders');
+					}, 1500);
+				} else {
+					// Payment window was closed before completion - cancel order and release stock
+					closePayPalLoading();
+					if (currentOrderId) {
+						try {
+							await ordersApi.cancelOrder(currentOrderId);
+							console.log('[checkout] Order cancelled due to window close:', currentOrderId);
+						} catch (cancelError) {
+							console.error('[checkout] Failed to cancel order on window close:', cancelError);
+						}
+						localStorage.removeItem('pendingOrderId');
+						localStorage.removeItem('pendingPaypalOrderId');
+						currentOrderId = null;
 					}
-					localStorage.removeItem('pendingOrderId');
-					localStorage.removeItem('pendingPaypalOrderId');
-					currentOrderId = null;
+					error = 'Payment window was closed. Order has been cancelled and stock released. If you completed the payment, please check your orders page.';
 				}
-				error = 'Payment window was closed. Order has been cancelled and stock released. If you completed the payment, please check your orders page.';
 			}
 		};
 		
