@@ -9,17 +9,23 @@
 	export let data;
 
 	let cartData = data.cart;
+	// Initialize price warnings and validation errors from server-side validation if available
+	let priceWarnings = data.priceWarnings || [];
+	let validationErrors = data.validationErrors || [];
 	// Track initial cart loading - start as true if we don't have data yet and might need to load it
+	// If we don't have cart data and we're not requiring auth, we might need to load it client-side
+	// So we should show loading state until we confirm (in onMount) whether we need to load or not
 	let isLoadingCart = (data.cart === null || data.cart === undefined) && !data.requiresAuth;
 	
 	// Load cart on client-side if not loaded server-side (for localStorage auth)
 	onMount(async () => {
 		// If we already have cart data from server, use it
+		// Server-side validation has already been done, so we don't need to validate again
 		if (data.cart !== null && data.cart !== undefined) {
 			cartData = data.cart;
 			isLoadingCart = false;
-			// Validate cart to check for price changes
-			await validateCartPrices();
+			// Use price warnings from server-side validation
+			priceWarnings = data.priceWarnings || [];
 			return;
 		}
 		
@@ -32,7 +38,7 @@
 				const loadedCart = await cartApi.getCart();
 				cart.set(loadedCart);
 				cartData = loadedCart;
-				// Validate cart to check for price changes
+				// For client-side loaded carts, validate on client (server validation not available)
 				await validateCartPrices();
 			} catch (err) {
 				console.error('Error loading cart:', err);
@@ -56,8 +62,17 @@
 			cartData = null;
 			isLoadingCart = false;
 		}
+		
+		// If we still don't have cart data after trying to load, it means cart is actually empty
+		// But only set isLoadingCart to false if we've confirmed we don't need to load
+		if (cartData === null || cartData === undefined) {
+			// If we have a token, we tried to load and failed or got empty cart
+			// If we don't have a token, we know we can't load, so stop loading
+			isLoadingCart = false;
+		}
 	});
 	
+	// Client-side validation (only used when cart is loaded client-side, not server-side)
 	async function validateCartPrices() {
 		if (!cartData || !cartData.items || cartData.items.length === 0) {
 			priceWarnings = [];
@@ -94,7 +109,7 @@
 	let updatingItems = new Set();
 	let errorMessage = '';
 	let showClearConfirm = false;
-	let priceWarnings = []; // Array of price change warnings
+	// priceWarnings is initialized from data above
 	let validatingCart = false;
 
 	async function updateQuantity(itemId, newQuantity) {
@@ -110,8 +125,9 @@
 			const updatedCart = await cartApi.updateItem(itemId, newQuantity);
 			cart.set(updatedCart);
 			cartData = updatedCart;
-			// Re-validate cart after quantity update
-			await validateCartPrices();
+			// Validation happens server-side on next page load
+			// Clear price warnings since cart was updated
+			priceWarnings = [];
 		} catch (error) {
 			if (isAuthenticationError(error)) {
 				redirectToLogin();
@@ -185,7 +201,7 @@
 	<title>Shopping Cart - Quick Gadgets</title>
 </svelte:head>
 
-{#if isLoadingCart}
+{#if isLoadingCart || validatingCart}
 	<div class="text-center py-12">
 		<div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
 		<p class="text-gray-600 text-lg">Loading your cart...</p>
@@ -200,7 +216,7 @@
 			Login
 		</button>
 	</div>
-{:else if !cartData || !cartData.items || cartData.items.length === 0}
+{:else if !cartData || !Array.isArray(cartData.items) || cartData.items.length === 0}
 	<div class="text-center py-12">
 		<p class="text-gray-600 text-lg mb-4">Your cart is empty.</p>
 		<button
@@ -217,6 +233,17 @@
 		{#if errorMessage}
 			<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
 				{errorMessage}
+			</div>
+		{/if}
+		
+		{#if validationErrors.length > 0}
+			<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+				<p class="font-semibold mb-2">⚠️ Cart Validation Errors</p>
+				<ul class="list-disc list-inside space-y-1">
+					{#each validationErrors as error}
+						<li>{typeof error === 'string' ? error : error.message || JSON.stringify(error)}</li>
+					{/each}
+				</ul>
 			</div>
 		{/if}
 		
@@ -241,6 +268,7 @@
 					<div class="flex items-center justify-between border-b pb-4 {itemWarning ? 'bg-yellow-50 border-yellow-200 rounded p-3' : ''}">
 						<a 
 							href="/product/{item.productId}" 
+							data-sveltekit-preload-data="off"
 							class="flex items-center space-x-4 flex-1 hover:opacity-80 transition-opacity"
 						>
 							{#if item.productImage}
