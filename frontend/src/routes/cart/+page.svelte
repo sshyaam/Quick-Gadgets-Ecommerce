@@ -18,6 +18,8 @@
 		if (data.cart !== null && data.cart !== undefined) {
 			cartData = data.cart;
 			isLoadingCart = false;
+			// Validate cart to check for price changes
+			await validateCartPrices();
 			return;
 		}
 		
@@ -30,6 +32,8 @@
 				const loadedCart = await cartApi.getCart();
 				cart.set(loadedCart);
 				cartData = loadedCart;
+				// Validate cart to check for price changes
+				await validateCartPrices();
 			} catch (err) {
 				console.error('Error loading cart:', err);
 				// If it fails with 401, user might not be logged in
@@ -53,10 +57,45 @@
 			isLoadingCart = false;
 		}
 	});
+	
+	async function validateCartPrices() {
+		if (!cartData || !cartData.items || cartData.items.length === 0) {
+			priceWarnings = [];
+			return;
+		}
+		
+		validatingCart = true;
+		try {
+			const validation = await cartApi.validateCart(cartData);
+			if (validation.warnings && Array.isArray(validation.warnings)) {
+				priceWarnings = validation.warnings;
+				
+				// If cart was updated with new prices, reload the cart to get updated prices
+				if (validation.cartUpdated) {
+					try {
+						const updatedCart = await cartApi.getCart();
+						cart.set(updatedCart);
+						cartData = updatedCart;
+					} catch (err) {
+						console.error('Error reloading cart after price update:', err);
+					}
+				}
+			} else {
+				priceWarnings = [];
+			}
+		} catch (err) {
+			console.error('Error validating cart:', err);
+			priceWarnings = [];
+		} finally {
+			validatingCart = false;
+		}
+	}
 	let loading = false;
 	let updatingItems = new Set();
 	let errorMessage = '';
 	let showClearConfirm = false;
+	let priceWarnings = []; // Array of price change warnings
+	let validatingCart = false;
 
 	async function updateQuantity(itemId, newQuantity) {
 		if (newQuantity < 1) {
@@ -71,6 +110,8 @@
 			const updatedCart = await cartApi.updateItem(itemId, newQuantity);
 			cart.set(updatedCart);
 			cartData = updatedCart;
+			// Re-validate cart after quantity update
+			await validateCartPrices();
 		} catch (error) {
 			if (isAuthenticationError(error)) {
 				redirectToLogin();
@@ -178,11 +219,26 @@
 				{errorMessage}
 			</div>
 		{/if}
+		
+		{#if priceWarnings.length > 0}
+			<div class="bg-yellow-100 border border-yellow-400 text-yellow-800 px-4 py-3 rounded mb-4">
+				<p class="font-semibold mb-2">⚠️ Price Changes Detected</p>
+				<ul class="list-disc list-inside space-y-1">
+					{#each priceWarnings as warning}
+						<li>
+							<strong>{warning.productName || 'Product'}:</strong> {warning.message}
+						</li>
+					{/each}
+				</ul>
+				<p class="text-sm mt-2">Prices have been updated. Please review your cart before checkout.</p>
+			</div>
+		{/if}
 
 		<div class="bg-white rounded-lg shadow-lg p-6">
 			<div class="space-y-4">
 				{#each cartData.items as item}
-					<div class="flex items-center justify-between border-b pb-4">
+					{@const itemWarning = priceWarnings.find(w => w.itemId === item.itemId || w.productId === item.productId)}
+					<div class="flex items-center justify-between border-b pb-4 {itemWarning ? 'bg-yellow-50 border-yellow-200 rounded p-3' : ''}">
 						<a 
 							href="/product/{item.productId}" 
 							class="flex items-center space-x-4 flex-1 hover:opacity-80 transition-opacity"
@@ -202,9 +258,16 @@
 							<div class="flex-1">
 								<h3 class="font-semibold text-lg text-blue-600 hover:text-blue-800">{item.productName || 'Product'}</h3>
 								<p class="text-gray-600 text-sm">Product ID: {item.productId}</p>
-								<p class="text-gray-600 text-sm">
-									Price: ₹{(item.price || item.lockedPrice || 0)?.toFixed(2) || 'N/A'} each
-								</p>
+								<div class="flex items-center gap-2">
+									<p class="text-gray-600 text-sm">
+										Price: ₹{(item.price || item.lockedPrice || 0)?.toFixed(2) || 'N/A'} each
+									</p>
+									{#if itemWarning}
+										<span class="text-yellow-600 text-xs font-semibold bg-yellow-100 px-2 py-1 rounded">
+											New: ₹{itemWarning.newPrice?.toFixed(2)}
+										</span>
+									{/if}
+								</div>
 							</div>
 						</a>
 						<div class="flex items-center space-x-4">

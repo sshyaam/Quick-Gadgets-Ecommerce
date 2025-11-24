@@ -356,6 +356,19 @@ export const catalogApi = {
  * Cart API
  */
 export const cartApi = {
+	async validateCart(cart) {
+		// This is an inter-worker call, so we need to use the worker URL directly
+		// The cart worker will handle authentication via service binding
+		return apiRequest(`${WORKER_URLS.cart}/cart/validate`, {
+			method: 'POST',
+			headers: {
+				'X-API-Key': 'ECOMSECRET',
+				'X-Worker-Request': 'true',
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({ cart })
+		});
+	},
 	async getCart() {
 		return apiRequest(`${WORKER_URLS.cart}/cart`);
 	},

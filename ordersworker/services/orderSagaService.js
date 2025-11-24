@@ -136,7 +136,7 @@ export async function createOrderSaga(
       request
     );
     
-    const cart = await cartResponse.json();
+    let cart = await cartResponse.json();
     sagaState.cartId = cart.cartId;
     
     if (!cart.items || cart.items.length === 0) {
@@ -155,7 +155,7 @@ export async function createOrderSaga(
             'X-Worker-Request': 'true',
             'Authorization': `Bearer ${orderData.accessToken}`,
           },
-          body: JSON.stringify({ cart }),
+          body: JSON.stringify({ cartId: cart.cartId }),
         });
         
         // Inject trace context
@@ -197,7 +197,45 @@ export async function createOrderSaga(
       throw new ConflictError(`Cart validation failed: ${errorMessages}`);
     }
     
-    addSpanLog(sagaSpan, 'Cart validated successfully', { cartId: cart.cartId, itemCount: cart.items.length }, request);
+    // If cart prices were updated, re-fetch the cart to get updated prices
+    if (validationData.cartUpdated) {
+      console.log('[order-saga] Cart prices were updated, re-fetching cart with new prices');
+      const updatedCartResponse = await traceExternalCall(
+        'cart.get_cart',
+        async () => {
+          const cartRequest = new Request('https://workers.dev/cart', {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+              'Authorization': `Bearer ${orderData.accessToken}`,
+            },
+          });
+          
+          injectTraceContext(cartRequest.headers);
+          const cartResponse = await env.cart_worker.fetch(cartRequest);
+          
+          if (!cartResponse.ok) {
+            throw new Error(`Failed to re-fetch cart: ${cartResponse.status}`);
+          }
+          
+          return cartResponse;
+        },
+        {
+          url: 'https://workers.dev/cart',
+          method: 'GET',
+          system: 'cart-worker',
+          operation: 'get_cart',
+        },
+        request
+      );
+      
+      const updatedCart = await updatedCartResponse.json();
+      cart = updatedCart; // Use updated cart with new prices
+      console.log('[order-saga] Cart re-fetched with updated prices');
+    }
+    
+    addSpanLog(sagaSpan, 'Cart validated successfully', { cartId: cart.cartId, itemCount: cart.items.length, pricesUpdated: validationData.cartUpdated || false }, request);
     
     compensationSteps.push({
       name: 'validateCart',
@@ -1349,7 +1387,7 @@ export async function createCODOrderSaga(
       request
     );
     
-    const cart = await cartResponse.json();
+    let cart = await cartResponse.json();
     sagaState.cartId = cart.cartId;
     
     if (!cart.items || cart.items.length === 0) {
@@ -1369,7 +1407,7 @@ export async function createCODOrderSaga(
             'Authorization': `Bearer ${orderData.accessToken}`,
             'Cookie': `accessToken=${orderData.accessToken}`,
           },
-          body: JSON.stringify({ cart }),
+          body: JSON.stringify({ cartId: cart.cartId }),
         });
         
         const { injectTraceContext } = await import('../../shared/utils/otel.js');
@@ -1402,7 +1440,50 @@ export async function createCODOrderSaga(
     
     const validationResult = await validation.json();
     if (!validationResult.valid) {
-      throw new ConflictError(validationResult.message || 'Cart validation failed');
+      const errorMessages = validationResult.errors && validationResult.errors.length > 0
+        ? validationResult.errors.map(e => e.message || e).join(', ')
+        : (validationResult.message || 'Unknown validation error');
+      throw new ConflictError(`Cart validation failed: ${errorMessages}`);
+    }
+    
+    // If cart prices were updated, re-fetch the cart to get updated prices
+    if (validationResult.cartUpdated) {
+      console.log('[cod-order-saga] Cart prices were updated, re-fetching cart with new prices');
+      const updatedCartResponse = await traceExternalCall(
+        'cart.get_cart',
+        async () => {
+          const cartRequest = new Request('https://workers.dev/cart', {
+            method: 'GET',
+            headers: {
+              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-Worker-Request': 'true',
+              'Authorization': `Bearer ${orderData.accessToken}`,
+              'Cookie': `accessToken=${orderData.accessToken}`,
+            },
+          });
+          
+          const { injectTraceContext } = await import('../../shared/utils/otel.js');
+          injectTraceContext(cartRequest.headers);
+          const response = await env.cart_worker.fetch(cartRequest);
+          
+          if (!response.ok) {
+            throw new Error(`Failed to re-fetch cart: ${response.status}`);
+          }
+          
+          return response;
+        },
+        {
+          url: 'https://workers.dev/cart',
+          method: 'GET',
+          system: 'cart-worker',
+          operation: 'get_cart',
+        },
+        request
+      );
+      
+      const updatedCart = await updatedCartResponse.json();
+      cart = updatedCart; // Use updated cart with new prices
+      console.log('[cod-order-saga] Cart re-fetched with updated prices');
     }
     
     // Step 2: Calculate shipping

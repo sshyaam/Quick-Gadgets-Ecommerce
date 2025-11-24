@@ -470,17 +470,35 @@ export async function clearCartByCartId(request, env) {
  * Validate cart (inter-worker)
  */
 export async function validateCart(request, env) {
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   
-  if (!body.cart) {
-    throw new ValidationError('Cart data is required');
+  // Get cartId from body (cartId or cart.cartId) or from authenticated user's cart
+  let cartId = body.cartId || body.cart?.cartId;
+  
+  // If no cartId in body, try to get it from the authenticated user's cart
+  if (!cartId) {
+    try {
+      const authResult = await authenticate(request, env);
+      if (!(authResult instanceof Response)) {
+        // User is authenticated, get their cart
+        const userCart = await cartService.getOrCreateCart(request.user.userId, env.cart_db);
+        cartId = userCart.cartId;
+      }
+    } catch (authError) {
+      // If auth fails, that's okay - we'll require cartId in body
+    }
+  }
+  
+  if (!cartId) {
+    throw new ValidationError('Cart ID is required. Provide cartId in request body or ensure user is authenticated.');
   }
   
   const validation = await cartService.validateCart(
-    body.cartId || body.cart?.cartId,
+    cartId,
     env.cart_db,
     env.pricing_worker, // Service binding
     env.fulfillment_worker, // Service binding
+    env.catalog_worker, // Service binding for product data (discount percentage)
     env.INTER_WORKER_API_KEY
   );
   
