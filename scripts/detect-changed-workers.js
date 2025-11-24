@@ -57,7 +57,7 @@ function getChangedFiles(baseBranch = 'main') {
         const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
         const files = output.trim().split('\n').filter(Boolean);
         if (files.length > 0) {
-          console.log(`[detect-changed-workers] Using GitHub event SHAs: ${beforeSha}..${afterSha}`);
+          console.error(`[detect-changed-workers] Using GitHub event SHAs: ${beforeSha}..${afterSha}`);
           return files;
         }
       } catch (error) {
@@ -71,7 +71,7 @@ function getChangedFiles(baseBranch = 'main') {
       const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
       const files = output.trim().split('\n').filter(Boolean);
       if (files.length > 0) {
-        console.log(`[detect-changed-workers] Using branch comparison: origin/${baseBranch}...HEAD`);
+        console.error(`[detect-changed-workers] Using branch comparison: origin/${baseBranch}...HEAD`);
         return files;
       }
     } catch (error) {
@@ -84,7 +84,7 @@ function getChangedFiles(baseBranch = 'main') {
       const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
       const files = output.trim().split('\n').filter(Boolean);
       if (files.length > 0) {
-        console.log(`[detect-changed-workers] Using previous commit comparison: HEAD~1..HEAD`);
+        console.error(`[detect-changed-workers] Using previous commit comparison: HEAD~1..HEAD`);
         return files;
       }
     } catch (error) {
@@ -96,7 +96,7 @@ function getChangedFiles(baseBranch = 'main') {
       const output = execSync('git diff --cached --name-only', { encoding: 'utf-8', stdio: 'pipe' });
       const files = output.trim().split('\n').filter(Boolean);
       if (files.length > 0) {
-        console.log(`[detect-changed-workers] Using staged files`);
+        console.error(`[detect-changed-workers] Using staged files`);
         return files;
       }
     } catch (e) {
@@ -155,15 +155,18 @@ function main() {
   try {
     const changedWorkers = detectChangedWorkers();
     
-    if (changedWorkers.length === 0) {
-      console.log('[]');
-      process.exit(0);
-    }
+    // Always output JSON array to stdout (for GitHub Actions)
+    // Log messages go to stderr
+    console.error(`[detect-changed-workers] Found ${changedWorkers.length} changed worker(s)`);
     
-    // Output as JSON array
+    // Output only JSON to stdout
     console.log(JSON.stringify(changedWorkers));
+    
+    process.exit(0);
   } catch (error) {
+    // Log error to stderr, output empty array to stdout
     console.error('Error detecting changed workers:', error.message);
+    console.log('[]');
     process.exit(1);
   }
 }
