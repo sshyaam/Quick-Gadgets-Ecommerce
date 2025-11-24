@@ -138,6 +138,168 @@ describe('logController', () => {
       expect(data).to.have.property('success', false);
       expect(data).to.have.property('error');
     });
+
+    it('should return 400 when body is empty', async () => {
+      const request = createMockRequest('https://example.com/log', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': 'test-api-key',
+          'X-Worker-Request': 'true'
+        },
+        body: ''
+      });
+      
+      const response = await logController.receiveLog(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(400);
+      expect(data).to.have.property('success', false);
+      expect(data.error).to.include('Empty request body');
+    });
+
+    it('should return 500 when log_state binding is missing', async () => {
+      const request = createMockRequest('https://example.com/log', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': 'test-api-key',
+          'X-Worker-Request': 'true'
+        },
+        body: JSON.stringify({
+          level: 'event',
+          message: 'Test log'
+        })
+      });
+      
+      delete mockEnv.log_state;
+      
+      const response = await logController.receiveLog(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(500);
+      expect(data).to.have.property('success', false);
+      expect(data.error).to.include('KV namespace not configured');
+    });
+
+    it('should store log successfully', async () => {
+      const request = createMockRequest('https://example.com/log', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': 'test-api-key',
+          'X-Worker-Request': 'true'
+        },
+        body: JSON.stringify({
+          level: 'event',
+          message: 'Test log message',
+          worker: 'test-worker'
+        })
+      });
+      
+      // Mock KV to store log successfully
+      mockEnv.log_state.get = async (key) => {
+        if (key === 'log_keys:index') {
+          return JSON.stringify(['log:123']);
+        }
+        return null;
+      };
+      mockEnv.log_state.put = async () => {};
+      
+      const response = await logController.receiveLog(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(200);
+      expect(data).to.have.property('success', true);
+    });
+  });
+
+  describe('debugKvLogs', () => {
+    it('should return debug logs from KV', async () => {
+      const request = createMockRequest('https://example.com/logs/debug');
+      
+      // Mock KV to return index and logs
+      mockEnv.log_state.get = async (key) => {
+        if (key === 'log_keys:index') {
+          return JSON.stringify(['log:123', 'log:456']);
+        }
+        if (key === 'log:123') {
+          return JSON.stringify({ level: 'event', message: 'Test log 1' });
+        }
+        if (key === 'log:456') {
+          return JSON.stringify({ level: 'error', message: 'Test log 2' });
+        }
+        return null;
+      };
+      
+      const response = await logController.debugKvLogs(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(200);
+      expect(data).to.have.property('totalLogs');
+      expect(data).to.have.property('sampleLogs');
+      expect(data).to.have.property('logs');
+    });
+
+    it('should return 500 when log_state is missing', async () => {
+      const request = createMockRequest('https://example.com/logs/debug');
+      delete mockEnv.log_state;
+      
+      const response = await logController.debugKvLogs(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(500);
+      expect(data).to.have.property('error');
+    });
+  });
+
+  describe('flushLogs', () => {
+    it('should flush logs to R2 successfully', async () => {
+      const request = createMockRequest('https://example.com/logs/flush', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': 'test-api-key',
+          'X-Worker-Request': 'true'
+        }
+      });
+      
+      // Mock KV and R2 for flush operation
+      mockEnv.log_state.get = async (key) => {
+        if (key === 'log_keys:index') {
+          return JSON.stringify(['log:123']);
+        }
+        if (key === 'log:123') {
+          return JSON.stringify({ level: 'event', message: 'Test' });
+        }
+        return null;
+      };
+      mockEnv.log_state.delete = async () => {};
+      mockEnv.log_state.put = async () => {};
+      mockEnv.log_bucket.put = async () => {};
+      
+      const response = await logController.flushLogs(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(200);
+      expect(data).to.have.property('success', true);
+    });
+
+    it('should return 500 when bindings are missing', async () => {
+      const request = createMockRequest('https://example.com/logs/flush', {
+        method: 'POST',
+        headers: {
+          'X-API-Key': 'test-api-key',
+          'X-Worker-Request': 'true'
+        }
+      });
+      
+      delete mockEnv.log_bucket;
+      delete mockEnv.log_state;
+      
+      const response = await logController.flushLogs(request, mockEnv);
+      const data = await response.json();
+      
+      expect(response.status).to.equal(500);
+      expect(data).to.have.property('success', false);
+      expect(data.error).to.include('Bindings not configured');
+    });
   });
 });
 
