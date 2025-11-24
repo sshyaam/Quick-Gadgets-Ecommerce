@@ -43,7 +43,52 @@ export async function load({ cookies, fetch, request }) {
 			throw new Error(`HTTP ${response.status}`);
 		}
 		
-		const cart = await response.json();
+		let cart = await response.json();
+		
+		// Validate cart on server-side (check for price changes)
+		// Only validate if cart has items
+		if (cart && cart.items && cart.items.length > 0) {
+			try {
+				const validateResponse = await fetch('https://cart-worker.shyaamdps.workers.dev/cart/validate', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'X-API-Key': 'ECOMSECRET',
+						'X-Worker-Request': 'true',
+						...(accessToken ? { 'Cookie': cookies.getAll().map(c => `${c.name}=${c.value}`).join('; ') } : {}),
+						...(authHeader ? { 'Authorization': authHeader } : {})
+					},
+					credentials: 'include',
+					body: JSON.stringify({ cartId: cart.cartId })
+				});
+				
+				if (validateResponse.ok) {
+					const validation = await validateResponse.json();
+					
+					// If cart was updated with new prices, fetch the updated cart
+					if (validation.cartUpdated) {
+						const updatedCartResponse = await fetch('https://cart-worker.shyaamdps.workers.dev/cart', {
+							headers,
+							credentials: 'include'
+						});
+						
+						if (updatedCartResponse.ok) {
+							cart = await updatedCartResponse.json();
+						}
+					}
+					
+					return {
+						cart,
+						requiresAuth: false,
+						priceWarnings: validation.warnings || [],
+						validationErrors: validation.errors || []
+					};
+				}
+			} catch (validationError) {
+				console.error('Error validating cart:', validationError);
+				// Continue with unvalidated cart if validation fails
+			}
+		}
 		
 		return {
 			cart,
