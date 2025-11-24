@@ -8,6 +8,7 @@ import sinon from 'sinon';
 import {
   getProductWithDetails,
   getProductsWithDetails,
+  invalidateProductCache,
 } from './catalogService.js';
 import { NotFoundError } from '../../shared/utils/errors.js';
 import { createMockD1, createMockD1WithSequence, createMockKV, createMockEnv } from '../../test/setup.js';
@@ -177,39 +178,130 @@ describe('catalogService', () => {
       const mockProducts = [
         {
           product_id: 'product-1',
-          data: JSON.stringify({ name: 'Product 1' }),
+          data: JSON.stringify({ name: 'Product 1', category: 'Electronics' }),
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
         {
           product_id: 'product-2',
-          data: JSON.stringify({ name: 'Product 2' }),
+          data: JSON.stringify({ name: 'Product 2', category: 'Electronics' }),
           created_at: '2024-01-01T00:00:00Z',
           updated_at: '2024-01-01T00:00:00Z',
         },
       ];
       
-      mockDb = createMockD1WithSequence([
+      // Create a new mockDb for this test to avoid conflicts
+      const testDb = createMockD1WithSequence([
+        { all: { results: mockProducts, success: true } }, // getProducts query
+        { first: { total: 2 } } // count query
+      ]);
+      
+      // Mock worker batch responses
+      mockPricingWorker._setResponse('GET', '/products', { 
+        'product-1': { price: 1000 },
+        'product-2': { price: 2000 }
+      });
+      mockFulfillmentWorker._setResponse('GET', '/stocks', { 
+        'product-1': { available: 50 },
+        'product-2': { available: 30 }
+      });
+      
+      const result = await getProductsWithDetails(
+        page,
+        limit,
+        null, // category
+        null, // search
+        testDb,
+        mockPricingWorker,
+        mockFulfillmentWorker,
+        mockEnv.INTER_WORKER_API_KEY
+      );
+      
+      expect(result).to.have.property('products');
+      expect(result).to.have.property('pagination');
+      expect(result.products).to.be.an('array');
+    });
+
+    it('should handle category filter', async () => {
+      const page = 1;
+      const limit = 10;
+      const category = 'Electronics';
+      
+      const testDb = createMockD1WithSequence([
+        { all: { results: [], success: true } },
+        { first: { total: 0 } }
+      ]);
+      
+      mockPricingWorker._setResponse('GET', '/products', {});
+      mockFulfillmentWorker._setResponse('GET', '/stocks', {});
+      
+      const result = await getProductsWithDetails(
+        page,
+        limit,
+        category,
+        null, // search
+        testDb,
+        mockPricingWorker,
+        mockFulfillmentWorker,
+        mockEnv.INTER_WORKER_API_KEY
+      );
+      
+      expect(result).to.have.property('products');
+      expect(result).to.have.property('pagination');
+    });
+
+    it('should handle worker errors gracefully', async () => {
+      const page = 1;
+      const limit = 10;
+      
+      const mockProducts = [
+        {
+          product_id: 'product-1',
+          data: JSON.stringify({ name: 'Product 1' }),
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+        }
+      ];
+      
+      const testDb = createMockD1WithSequence([
         { all: { results: mockProducts, success: true } },
+        { first: { total: 1 } }
       ]);
       
-      // Mock worker responses - getPriceFromWorker uses `/product/` not `/price/`
-      mockPricingWorker._setResponse('GET', '/product/product-1', { price: 1000 });
-      mockPricingWorker._setResponse('GET', '/product/product-2', { price: 2000 });
-      mockFulfillmentWorker._setResponse('GET', '/stock/product-1', { available: 50 });
-      mockFulfillmentWorker._setResponse('GET', '/stock/product-2', { available: 30 });
+      // Mock worker to return error
+      mockPricingWorker._setResponse('GET', '/products', null, { status: 500 });
+      mockFulfillmentWorker._setResponse('GET', '/stocks', null, { status: 500 });
       
-      // Mock getProducts database call
-      mockDb = createMockD1WithSequence([
-        { all: { results: mockProducts, success: true } }, // getProducts
-      ]);
+      const result = await getProductsWithDetails(
+        page,
+        limit,
+        null, // category
+        null, // search
+        testDb,
+        mockPricingWorker,
+        mockFulfillmentWorker,
+        mockEnv.INTER_WORKER_API_KEY
+      );
       
-      // Since we can't stub ES modules, we'll test that the function exists
-      // and can handle the basic flow. Full integration would require more setup.
-      expect(getProductsWithDetails).to.be.a('function');
+      // Should still return products even if worker calls fail
+      expect(result).to.have.property('products');
+      expect(result.products[0]).to.have.property('price', null);
+      expect(result.products[0]).to.have.property('stock', 0);
+    });
+  });
+
+  describe('invalidateProductCache', () => {
+    it('should delete product from cache', async () => {
+      const productId = 'product-123';
+      let deletedKey = null;
       
-      // For now, skip the full test since it requires complex mocking
-      // In a real scenario, you'd set up the full database sequence
+      mockKv.delete = async (key) => {
+        deletedKey = key;
+      };
+      
+      await invalidateProductCache(productId, mockKv);
+      
+      expect(deletedKey).to.equal(`product:${productId}`);
     });
   });
 });

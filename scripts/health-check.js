@@ -34,7 +34,7 @@ const WORKER_URLS = {
     preview: process.env.FULFILLMENT_WORKER_PREVIEW_URL || 'https://fulfillmentworker-preview.shyaamdps.workers.dev'
   },
   healthcheckworker: {
-    production: process.env.HEALTHCHECK_WORKER_URL || 'https://healthcheck-worker.shyaamdps.workers.dev',
+    production: process.env.HEALTHCHECK_WORKER_URL || 'https://health-check-worker.shyaamdps.workers.dev',
     preview: process.env.HEALTHCHECK_WORKER_PREVIEW_URL || 'https://healthcheckworker-preview.shyaamdps.workers.dev'
   },
   logworker: {

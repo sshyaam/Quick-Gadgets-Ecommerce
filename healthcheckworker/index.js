@@ -3,6 +3,8 @@ import { errorHandler } from '../shared/utils/errors.js';
 import { addCorsHeaders, handleOptions } from '../shared/utils/cors.js';
 import { instrumentHandler, initRequestTrace, addTraceHeaders, createOtelConfig } from '../shared/utils/tracing.js';
 
+// Sample test to see if runners are deploying the health check worker
+
 const router = Router();
 
 // Handle OPTIONS preflight
