@@ -14,7 +14,16 @@
 	$: hasNext = pagination.hasNext !== undefined ? pagination.hasNext : (currentPage < totalPages);
 
 	function goToPage(pageNum) {
-		if (pageNum < 1 || pageNum > totalPages) return;
+		// Validate pageNum is a number (not ellipsis string)
+		if (typeof pageNum !== 'number' || isNaN(pageNum)) {
+			console.warn('[Pagination] Invalid page number:', pageNum);
+			return;
+		}
+		
+		if (pageNum < 1 || pageNum > totalPages) {
+			console.warn('[Pagination] Page number out of range:', pageNum);
+			return;
+		}
 		
 		const params = new URLSearchParams();
 		
@@ -90,7 +99,7 @@
 			{#each getPageNumbers() as pageNum}
 				{#if pageNum === '...'}
 					<span class="px-2 text-gray-500">...</span>
-				{:else}
+				{:else if typeof pageNum === 'number'}
 					<button
 						on:click={() => goToPage(pageNum)}
 						class="px-4 py-2 border rounded-lg {pageNum === currentPage ? 'bg-blue-500 text-white border-blue-500' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-300'}"
