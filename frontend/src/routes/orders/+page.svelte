@@ -11,11 +11,13 @@
 	export let data;
 
 	// Backend returns already-grouped orders as an object: { "2025-01-20": [orders...], ... }
-	let groupedOrders = data.orders || {};
-	let pagination = data.pagination || { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false };
+	// Reactive: Update when data prop changes (from server-side load via pagination/filters)
+	$: groupedOrders = data.orders || {};
+	$: pagination = data.pagination || { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false };
+	$: requiresAuth = data.requiresAuth || false;
+	
 	// Start with loading true if we don't have orders data yet
 	let loading = (data.orders === null || data.orders === undefined) && !data.requiresAuth;
-	let requiresAuth = data.requiresAuth || false;
 	
 	// Filter state - initialize from URL params on mount
 	let statusFilter = 'all';
@@ -28,7 +30,7 @@
 	// Track if component is mounted and last applied filters to prevent duplicate calls
 	let isMounted = false;
 	let lastAppliedFilters = '';
-	
+
 	// Load orders function
 	async function loadOrders(filters = {}) {
 		// Create a key for the filters to prevent duplicate calls
@@ -79,7 +81,7 @@
 		dateFromFilter = currentDateFrom;
 		dateToFilter = currentDateTo;
 		
-		// Build filters object
+		// Build filters object - RESET to page 1 when filters change
 		const filters = {};
 		if (currentStatus && currentStatus !== 'all') {
 			filters.status = currentStatus;
@@ -90,9 +92,8 @@
 		if (currentDateTo) {
 			filters.dateTo = currentDateTo;
 		}
-		// Add pagination
-		const currentPage = parseInt($page.url.searchParams.get('page') || '1', 10);
-		filters.page = currentPage;
+		// Reset to page 1 when filters change
+		filters.page = 1;
 		filters.limit = 10;
 		
 		console.log('[orders] Applying filters:', filters);
@@ -103,20 +104,18 @@
 		if (currentStatus && currentStatus !== 'all') params.set('status', currentStatus);
 		if (currentDateFrom) params.set('dateFrom', currentDateFrom);
 		if (currentDateTo) params.set('dateTo', currentDateTo);
+		params.set('page', '1'); // Reset to page 1 when filters change
 		
 		const queryString = params.toString();
-		const newUrl = queryString ? `/orders?${queryString}` : '/orders';
+		const newUrl = `/orders?${queryString}`;
 		
 		// Track when we're changing filters to prevent reactive override
 		if (typeof window !== 'undefined') {
 			window.lastFilterChange = Date.now();
 		}
 		
-		// Use goto to update URL (this will update $page store)
-		goto(newUrl, { replaceState: true, noScroll: true, invalidateAll: false });
-		
-		// Reload orders with filters immediately
-		await loadOrders(filters);
+		// Use goto to update URL (this will update $page store and trigger server-side load)
+		goto(newUrl, { replaceState: true, noScroll: true, invalidateAll: true });
 		
 		// Allow reactive updates after a delay
 		setTimeout(() => {
@@ -130,8 +129,8 @@
 		statusFilter = 'all';
 		dateFromFilter = '';
 		dateToFilter = '';
-		goto('/orders', { replaceState: true, noScroll: true, invalidateAll: false });
-		await loadOrders({});
+		// Reset to page 1 when clearing filters
+		goto('/orders?page=1', { replaceState: true, noScroll: true, invalidateAll: true });
 		setTimeout(() => {
 			isUserChanging = false;
 		}, 100);
@@ -191,12 +190,11 @@
 		filters.page = currentPage;
 		filters.limit = 10;
 		
-		// If we have filters, always reload with filters (even if we have orders from server)
-		if (Object.keys(filters).length > 0) {
+		// Only load client-side if server-side didn't provide data
+		// Server-side load (via +page.server.js) should handle most cases
+		if (data.clientSideAuth || (accessToken && !hasOrders && !data.requiresAuth)) {
+			// Only load client-side if we need to (client-side auth or no server data)
 			await loadOrders(filters);
-		} else if ((data.clientSideAuth || (accessToken && !hasOrders)) && !data.requiresAuth) {
-			// If no filters and no orders, load normally
-			await loadOrders({});
 		} else if (!accessToken && !hasOrders && !data.clientSideAuth) {
 			// No token, no orders, and server didn't indicate client-side auth check
 			requiresAuth = data.requiresAuth || false;

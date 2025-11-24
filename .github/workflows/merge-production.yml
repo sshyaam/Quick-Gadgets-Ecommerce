@@ -76,20 +76,32 @@ jobs:
           echo "GitHub event before: $GITHUB_EVENT_BEFORE"
           echo "GitHub event after: $GITHUB_EVENT_AFTER"
           echo "GitHub SHA: $GITHUB_SHA"
-          # Run script and capture output
-          SCRIPT_OUTPUT=$(node scripts/detect-changed-workers.js 2>&1 || echo '[]')
-          # Extract only the JSON array line (should be the last line that starts with [)
-          WORKERS=$(echo "$SCRIPT_OUTPUT" | grep -E '^\[' | tail -1)
-          # If no valid JSON found, use empty array
-          if [ -z "$WORKERS" ] || ! echo "$WORKERS" | grep -qE '^\[.*\]$'; then
+          # Run script - only capture stdout (JSON), stderr goes to logs
+          # Script outputs JSON to stdout and logs to stderr
+          set +e  # Don't exit on error
+          WORKERS=$(node scripts/detect-changed-workers.js 2>/dev/null)
+          EXIT_CODE=$?
+          set -e  # Re-enable exit on error
+          
+          # If script failed or output is empty, use empty array
+          if [ $EXIT_CODE -ne 0 ] || [ -z "$WORKERS" ]; then
             WORKERS='[]'
           fi
-          # Trim any whitespace
+          
+          # Validate it's a valid JSON array (starts with [ and ends with ])
+          if ! echo "$WORKERS" | grep -qE '^\[.*\]$'; then
+            echo "Warning: Output is not a valid JSON array, using empty array"
+            WORKERS='[]'
+          fi
+          
+          # Trim any whitespace and newlines
           WORKERS=$(echo "$WORKERS" | tr -d '\n\r' | xargs)
-          # Validate it's not empty after trimming
+          
+          # Final validation: ensure it's not empty after trimming
           if [ -z "$WORKERS" ]; then
             WORKERS='[]'
           fi
+          
           # Use multiline format for GitHub Actions output (more reliable)
           {
             echo "workers<<EOF"
