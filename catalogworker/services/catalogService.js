@@ -104,7 +104,36 @@ export async function getProductWithDetails(
 }
 
 /**
+ * Extract minimal fields needed for catalog listing
+ * Only includes: name, description, category, discountPercentage, and first image
+ */
+function extractCatalogFields(productData) {
+  // Extract first image from various possible locations
+  let firstImage = null;
+  
+  // Check for images array first
+  if (productData.images && Array.isArray(productData.images) && productData.images.length > 0) {
+    firstImage = productData.images[0];
+  } else {
+    // Check for single image fields
+    firstImage = productData.image || productData.imageUrl || productData.image_url || 
+                 productData.productImage || productData.thumbnail || productData.thumbnailUrl || null;
+  }
+  
+  // Return only the minimal fields needed for catalog display
+  return {
+    name: productData.name || null,
+    description: productData.description || null,
+    category: productData.category || null,
+    discountPercentage: productData.discountPercentage || 0,
+    // Include first image - use images array if we found one, otherwise use single image field
+    ...(firstImage ? { images: [firstImage] } : {}),
+  };
+}
+
+/**
  * Get products with pagination
+ * Returns only minimal fields for catalog listing: name, description, category, discountPercentage, first image, price, stock
  */
 export async function getProductsWithDetails(
   page,
@@ -143,26 +172,24 @@ export async function getProductsWithDetails(
   ]);
   
   // Combine product data with price and stock
-  // Always use fresh stock from fulfillment worker, never from cached product data
+  // Only include minimal fields needed for catalog listing
   const products = result.products.map(product => {
     const productData = typeof product.data === 'string' 
       ? JSON.parse(product.data) 
       : product.data;
     
-    // Remove stock and price from productData if they exist (shouldn't be there, but safety measure)
-    const { price: _priceFromData, stock: _stockFromData, ...productDataClean } = productData;
-    
     const priceData = prices[product.product_id];
     const stockData = stocks[product.product_id];
     
-    // Always use fresh stock from fulfillment worker, never from productData
+    // Extract only minimal catalog fields
+    const catalogFields = extractCatalogFields(productData);
+    
+    // Return minimal product data for catalog listing
     return {
       productId: product.product_id,
-      ...productDataClean, // Use cleaned productData (without stock/price)
+      ...catalogFields, // Only name, description, category, discountPercentage, first image
       price: priceData?.price || null, // Always from pricing worker
       stock: stockData?.available || 0, // Always from fulfillment worker, never cached
-      createdAt: product.created_at,
-      updatedAt: product.updated_at,
     };
   });
   
