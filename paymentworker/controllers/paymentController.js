@@ -119,6 +119,16 @@ export async function createPayPalOrder(request, env, ctx = null) {
       worker: 'payment-worker',
     }, apiKey, ctx);
     
+    // Log all PayPal URLs being returned
+    if (paypalOrder.links && Array.isArray(paypalOrder.links)) {
+      console.log('[payment-controller] PayPal URLs being returned:');
+      paypalOrder.links.forEach((link, index) => {
+        console.log(`  [${index + 1}] ${link.rel}: ${link.href} (method: ${link.method || 'N/A'})`);
+      });
+    } else {
+      console.log('[payment-controller] No links found in PayPal order response');
+    }
+    
     return new Response(
       JSON.stringify({
         orderId: paypalOrder.id,

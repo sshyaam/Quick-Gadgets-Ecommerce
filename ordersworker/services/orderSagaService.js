@@ -664,6 +664,16 @@ export async function createOrderSaga(
       }
     }
     
+    // Log all PayPal URLs received
+    if (paymentData.links && Array.isArray(paymentData.links)) {
+      console.log('[order-saga] PayPal URLs received:');
+      paymentData.links.forEach((link, index) => {
+        console.log(`  [${index + 1}] ${link.rel}: ${link.href} (method: ${link.method || 'N/A'})`);
+      });
+    } else {
+      console.log('[order-saga] No links found in PayPal payment response');
+    }
+    
     // Find PayPal approval URL from payment links
     const approvalLink = paymentData.links?.find(link => link.rel === 'approve');
     if (!approvalLink) {
