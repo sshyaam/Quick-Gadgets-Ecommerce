@@ -424,12 +424,14 @@ export async function removeItemFromCart(
 
 /**
  * Validate cart (revalidate prices and stocks)
+ * Now accounts for discount percentage changes
  */
 export async function validateCart(
   cartId,
   db,
   pricingWorkerBinding,
   fulfillmentWorkerBinding,
+  catalogWorkerBinding,
   apiKey
 ) {
   const cart = await getCartById(db, cartId);
@@ -446,7 +448,7 @@ export async function validateCart(
   
   // Validate each item
   for (const item of items) {
-    // Get current price
+    // Get current base price from pricing worker
     const priceResponse = await getWorkerBinding(
       pricingWorkerBinding,
       `/product/${item.productId}`,
@@ -460,11 +462,62 @@ export async function validateCart(
     }
     
     const priceData = await priceResponse.json();
+    const basePrice = priceData.price;
     
-    // Check if price changed (support both price and lockedPrice for backward compatibility)
-    const currentPrice = item.price || item.lockedPrice;
-    if (priceData.price !== currentPrice) {
-      warnings.push(`Product ${item.productId}: Price changed from ${currentPrice} to ${priceData.price}`);
+    // Get product data to check current discount percentage
+    let currentDiscountPercentage = 0;
+    let productName = item.productName || 'Product';
+    
+    if (catalogWorkerBinding) {
+      try {
+        const productResponse = await getWorkerBinding(
+          catalogWorkerBinding,
+          `/product/${item.productId}`,
+          {},
+          apiKey
+        );
+        
+        if (productResponse.ok) {
+          const productData = await productResponse.json();
+          productName = productData.name || productName;
+          currentDiscountPercentage = productData.discountPercentage || 0;
+        }
+      } catch (productError) {
+        console.warn(`[cart-service] Failed to get product data for ${item.productId}:`, productError.message);
+        // Continue without product data - we'll still check price
+      }
+    }
+    
+    // Calculate current discounted price
+    let currentDiscountedPrice = basePrice;
+    if (currentDiscountPercentage > 0 && currentDiscountPercentage <= 90) {
+      currentDiscountedPrice = basePrice * (1 - currentDiscountPercentage / 100);
+    }
+    
+    // Get cart item price (this is the price when item was added, with discount applied)
+    const cartItemPrice = item.price || item.lockedPrice || 0;
+    
+    // Check if the discounted price has changed (allow small floating point differences)
+    const priceDifference = Math.abs(currentDiscountedPrice - cartItemPrice);
+    if (priceDifference > 0.01) { // More than 1 paisa difference
+      const oldPriceDisplay = cartItemPrice.toFixed(2);
+      const newPriceDisplay = currentDiscountedPrice.toFixed(2);
+      
+      // Update the item price to the current discounted price
+      item.price = currentDiscountedPrice;
+      // Remove lockedPrice if it exists (use price instead)
+      if (item.lockedPrice) {
+        delete item.lockedPrice;
+      }
+      
+      warnings.push({
+        productId: item.productId,
+        productName: productName,
+        message: `Price updated from ₹${oldPriceDisplay} to ₹${newPriceDisplay}`,
+        oldPrice: cartItemPrice,
+        newPrice: currentDiscountedPrice,
+        itemId: item.itemId
+      });
     }
     
     // Get current stock
@@ -488,16 +541,38 @@ export async function validateCart(
     }
   }
   
+  // If prices were updated, save the cart with updated prices
+  if (warnings.length > 0) {
+    // Recalculate total price with updated prices
+    const totalPrice = items.reduce((sum, item) => {
+      return sum + ((item.price || item.lockedPrice || 0) * item.quantity);
+    }, 0);
+    
+    // Update cart in database with new prices
+    try {
+      const updated = await updateCart(db, cartId, items, totalPrice);
+      if (updated) {
+        console.log(`[cart-service] Cart prices updated successfully. New total: ${totalPrice}`);
+      } else {
+        console.warn(`[cart-service] Failed to update cart prices in database`);
+      }
+    } catch (updateError) {
+      console.error(`[cart-service] Error updating cart prices:`, updateError.message, updateError.stack);
+      // Don't fail validation if price update fails - we still want to return warnings
+    }
+  }
+  
   const result = {
     valid: errors.length === 0,
     warnings: warnings.length > 0 ? warnings : undefined,
     errors: errors.length > 0 ? errors : undefined,
+    cartUpdated: warnings.length > 0, // Indicate if cart was updated
   };
   
   if (errors.length > 0) {
     console.log(`[cart-service] Cart validation failed with ${errors.length} error(s):`, errors);
   } else if (warnings.length > 0) {
-    console.log(`[cart-service] Cart validation passed with ${warnings.length} warning(s):`, warnings);
+    console.log(`[cart-service] Cart validation passed with ${warnings.length} warning(s). Prices updated.`, warnings);
   } else {
     console.log('[cart-service] Cart validation passed with no errors or warnings');
   }
