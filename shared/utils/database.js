@@ -4,6 +4,8 @@
  * Enhanced with OpenTelemetry tracing
  */
 
+// Sample thing to see if runners are deploying everything
+
 import { traceDbOperation } from './otel.js';
 
 /**
