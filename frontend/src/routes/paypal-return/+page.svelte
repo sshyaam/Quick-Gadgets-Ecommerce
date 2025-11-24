@@ -12,7 +12,10 @@
 	onMount(async () => {
 		// Notify parent window if this tab is closed before payment completes
 		const handleBeforeUnload = () => {
-			if (!paymentCompleted && window.opener && !window.opener.closed) {
+			// Use a synchronous check - paymentCompleted might not be updated in time
+			// So we check localStorage for a completion marker
+			const paymentSuccess = localStorage.getItem('paypalPaymentSuccess') === 'true';
+			if (!paymentSuccess && window.opener && !window.opener.closed) {
 				// Try to send a message before the window closes
 				try {
 					window.opener.postMessage({
@@ -29,10 +32,13 @@
 		
 		// Also listen for visibility change (tab switching might trigger this)
 		const handleVisibilityChange = () => {
-			if (document.hidden && !paymentCompleted && window.opener && !window.opener.closed) {
+			const paymentSuccess = localStorage.getItem('paypalPaymentSuccess') === 'true';
+			if (document.hidden && !paymentSuccess && window.opener && !window.opener.closed) {
 				// Tab was hidden - might be closing
 				setTimeout(() => {
-					if (document.hidden && !paymentCompleted) {
+					const stillHidden = document.hidden;
+					const stillNotCompleted = localStorage.getItem('paypalPaymentSuccess') !== 'true';
+					if (stillHidden && stillNotCompleted) {
 						try {
 							window.opener.postMessage({
 								type: 'PAYPAL_WINDOW_CLOSED',
@@ -76,7 +82,15 @@
 				const result = await ordersApi.capturePayment(orderId, paypalOrderId);
 
 				if (result && result.success) {
+					// Mark payment as successful in localStorage FIRST (before any async operations)
+					// This prevents beforeunload from sending wrong message
+					localStorage.setItem('paypalPaymentSuccess', 'true');
 					paymentCompleted = true;
+					
+					// Remove event listeners immediately to prevent them from firing
+					window.removeEventListener('beforeunload', handleBeforeUnload);
+					document.removeEventListener('visibilitychange', handleVisibilityChange);
+					
 					message = 'Payment successful! Redirecting to orders...';
 					// Clear any stored data
 					localStorage.removeItem('pendingOrderId');
@@ -91,6 +105,8 @@
 					}
 					
 					setTimeout(() => {
+						// Clear the success marker before closing
+						localStorage.removeItem('paypalPaymentSuccess');
 						if (window.opener) {
 							// Close this window if opened as popup
 							window.close();
@@ -108,7 +124,15 @@
 				const result = await ordersApi.capturePayment(storedOrderId, storedPaypalOrderId);
 
 				if (result && result.success) {
+					// Mark payment as successful in localStorage FIRST (before any async operations)
+					// This prevents beforeunload from sending wrong message
+					localStorage.setItem('paypalPaymentSuccess', 'true');
 					paymentCompleted = true;
+					
+					// Remove event listeners immediately to prevent them from firing
+					window.removeEventListener('beforeunload', handleBeforeUnload);
+					document.removeEventListener('visibilitychange', handleVisibilityChange);
+					
 					message = 'Payment successful! Redirecting to orders...';
 					// Clear stored data
 					localStorage.removeItem('pendingOrderId');
@@ -123,6 +147,8 @@
 					}
 					
 					setTimeout(() => {
+						// Clear the success marker before closing
+						localStorage.removeItem('paypalPaymentSuccess');
 						if (window.opener) {
 							// Close this window if opened as popup
 							window.close();
@@ -140,9 +166,14 @@
 			error = err.message || 'Payment processing failed. Please check your orders page.';
 			loading = false;
 			
+			// Remove event listeners on error too
+			window.removeEventListener('beforeunload', handleBeforeUnload);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			
 			// Clear stored data on error
 			localStorage.removeItem('pendingOrderId');
 			localStorage.removeItem('pendingPaypalOrderId');
+			localStorage.removeItem('paypalPaymentSuccess');
 			
 			// Notify parent window (checkout page) if opened in popup
 			if (window.opener) {

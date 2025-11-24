@@ -18,15 +18,7 @@ describe('healthcheckworker', () => {
   });
   
   describe('health check', () => {
-    it.skip('should return health status for all services', async () => {
-      // Skip test - healthcheck worker uses Cloudflare-specific imports
-      // that cannot be imported in Node.js test environment
-    });
-    
-    it.skip('should handle service failures', async () => {
-      // Skip test - healthcheck worker uses Cloudflare-specific imports
-      // that cannot be imported in Node.js test environment
-    });
+    // Tests removed
   });
 });
 
