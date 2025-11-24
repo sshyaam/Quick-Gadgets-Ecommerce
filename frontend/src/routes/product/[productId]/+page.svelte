@@ -386,9 +386,28 @@
 					<p class="text-gray-600 mb-6">{product.description || 'No description available'}</p>
 					
 					<div class="mb-6">
-						<span class="text-4xl font-bold text-blue-600">
-							₹{product.price?.toFixed(2) || 'N/A'}
-						</span>
+						{#if product.discountPercentage > 0}
+							<div class="mb-2">
+								<span class="inline-block bg-red-500 text-white text-sm font-bold px-3 py-1 rounded">
+									{product.discountPercentage}% OFF
+								</span>
+							</div>
+						{/if}
+						<div class="flex items-baseline gap-3">
+							{#if product.discountPercentage > 0 && product.price}
+								{@const discountedPrice = product.price * (1 - product.discountPercentage / 100)}
+								<span class="text-4xl font-bold text-blue-600">
+									₹{discountedPrice.toFixed(2)}
+								</span>
+								<span class="text-2xl text-gray-400 line-through">
+									₹{product.price.toFixed(2)}
+								</span>
+							{:else}
+								<span class="text-4xl font-bold text-blue-600">
+									₹{product.price?.toFixed(2) || 'N/A'}
+								</span>
+							{/if}
+						</div>
 						<div class="mt-2">
 							<span class="text-sm text-gray-500">
 								Stock: {product.stock || 0} available

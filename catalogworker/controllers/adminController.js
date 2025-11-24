@@ -9,6 +9,7 @@ import * as catalogService from '../services/catalogService.js';
 import { ValidationError } from '../../shared/utils/errors.js';
 import { sendLog } from '../../shared/utils/logger.js';
 import { randomUUID } from 'crypto';
+import { getWorkerBinding } from '../../shared/utils/interWorker.js';
 
 /**
  * Get all products (admin view - includes deleted)
@@ -77,13 +78,22 @@ export async function getAllProducts(request, env) {
     }
   });
   
-  // Batch fetch stock for all products at once
+  // Batch fetch stock and prices for all products at once
   let stockMap = {};
+  let priceMap = {};
   if (parsedProducts.length > 0) {
+    const productIds = parsedProducts.map(p => p.productId);
+    const productIdsString = productIds.join(',');
+    const apiKey = env.INTER_WORKER_API_KEY;
+    
+    console.log(`[adminController] Fetching data for ${productIds.length} products`);
+    console.log(`[adminController] Service bindings available:`, {
+      pricing_worker: !!env.pricing_worker,
+      fulfillment_worker: !!env.fulfillment_worker
+    });
+    
+    // Fetch stock
     try {
-      const productIds = parsedProducts.map(p => p.productId);
-      const productIdsString = productIds.join(',');
-      
       if (env.fulfillment_worker) {
         // Use service binding
         const stockResponse = await env.fulfillment_worker.fetch(
@@ -91,7 +101,7 @@ export async function getAllProducts(request, env) {
           {
             method: 'GET',
             headers: {
-              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-API-Key': apiKey,
               'X-Worker-Request': 'true',
             },
           }
@@ -111,7 +121,7 @@ export async function getAllProducts(request, env) {
           {
             method: 'GET',
             headers: {
-              'X-API-Key': env.INTER_WORKER_API_KEY,
+              'X-API-Key': apiKey,
               'X-Worker-Request': 'true',
             },
           }
@@ -128,27 +138,140 @@ export async function getAllProducts(request, env) {
       console.error('[adminController] Error batch fetching stock:', stockError.message, stockError.stack);
       // Continue without stock data
     }
+    
+    // Fetch prices using service binding (same pattern as catalogService)
+    try {
+      if (env.pricing_worker) {
+        // Use service binding directly (same as catalogService.getPricesFromWorker)
+        const priceResponse = await getWorkerBinding(
+          env.pricing_worker,
+          '/products',
+          { productIds: productIdsString },
+          apiKey
+        );
+        
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          priceMap = priceData || {};
+          console.log(`[adminController] Fetched prices for ${Object.keys(priceMap).length} products using service binding`);
+          if (Object.keys(priceMap).length > 0) {
+            const sampleKeys = Object.keys(priceMap).slice(0, 3);
+            console.log(`[adminController] Price map sample:`, sampleKeys.map(key => ({ 
+              productId: key, 
+              priceData: priceMap[key],
+              priceValue: priceMap[key]?.price 
+            })));
+          } else {
+            console.warn(`[adminController] Price map is empty! Product IDs requested: ${productIdsString.substring(0, 100)}`);
+          }
+        } else {
+          const errorText = await priceResponse.text().catch(() => 'Unknown error');
+          console.error('[adminController] Batch price fetch failed via service binding:', priceResponse.status, errorText);
+        }
+      } else {
+        console.warn('[adminController] pricing_worker service binding not available, using HTTP fallback');
+        // Fallback to HTTP only if service binding is not available
+        const pricingUrl = env.PRICING_WORKER_URL || 'https://pricing-worker.shyaamdps.workers.dev';
+        const priceResponse = await fetch(
+          `${pricingUrl}/products?productIds=${productIdsString}`,
+          {
+            method: 'GET',
+            headers: {
+              'X-API-Key': apiKey,
+              'X-Worker-Request': 'true',
+            },
+          }
+        );
+        
+        if (priceResponse.ok) {
+          const priceData = await priceResponse.json();
+          priceMap = priceData || {};
+          console.log(`[adminController] Fetched prices for ${Object.keys(priceMap).length} products (HTTP fallback)`);
+        } else {
+          const errorText = await priceResponse.text().catch(() => 'Unknown error');
+          console.error('[adminController] Batch price fetch failed (HTTP fallback):', priceResponse.status, errorText);
+        }
+      }
+    } catch (priceError) {
+      console.error('[adminController] Error batch fetching prices:', priceError.message, priceError.stack);
+      // Continue without price data
+    }
   }
   
-  // Combine product data with stock
+  // Combine product data with stock and price
   const products = parsedProducts.map(({ productId, productData, createdAt, updatedAt, deletedAt }) => {
     const stockInfo = stockMap[productId] || null;
+    const priceInfo = priceMap[productId] || null;
     let stock = 0;
+    let price = null;
     
     if (stockInfo) {
       // stockInfo is an object with { quantity, available, reservedQuantity, updatedAt }
       stock = stockInfo.available !== undefined ? stockInfo.available : (stockInfo.quantity - (stockInfo.reservedQuantity || 0) || 0);
     }
     
-    return {
+    if (priceInfo && priceInfo !== null) {
+      // priceInfo is an object with { price, currency, updatedAt }
+      if (typeof priceInfo.price === 'number') {
+        price = priceInfo.price; // Use the price even if it's 0 (though unlikely)
+      } else if (typeof priceInfo === 'object' && 'price' in priceInfo) {
+        // Try to parse if it's a string
+        const parsedPrice = parseFloat(priceInfo.price);
+        price = !isNaN(parsedPrice) ? parsedPrice : null;
+      }
+    }
+    
+    // Extract ratings and reviews from productData (they should be in the JSONB data)
+    // Handle both number and string types, and ensure we get the actual value
+    // Note: These might be 0 if not set, which is valid
+    let rating = 0;
+    if (productData.rating !== null && productData.rating !== undefined && productData.rating !== '') {
+      const parsedRating = typeof productData.rating === 'number' ? productData.rating : parseFloat(productData.rating);
+      rating = !isNaN(parsedRating) ? parsedRating : 0;
+    }
+    
+    let reviews = 0;
+    if (productData.reviews !== null && productData.reviews !== undefined && productData.reviews !== '') {
+      const parsedReviews = typeof productData.reviews === 'number' ? productData.reviews : parseInt(productData.reviews);
+      reviews = !isNaN(parsedReviews) ? parsedReviews : 0;
+    }
+    
+    // Debug log for first product
+    const firstProductIndex = parsedProducts.findIndex(p => p.productId === productId);
+    if (firstProductIndex === 0) {
+      console.log(`[adminController] Sample product data for ${productId}:`, {
+        productDataKeys: Object.keys(productData),
+        rating: productData.rating,
+        reviews: productData.reviews,
+        priceInfo,
+        priceMapKeys: Object.keys(priceMap).slice(0, 5),
+        lookingForProductId: productId,
+        stockInfo,
+        finalRating: rating,
+        finalReviews: reviews,
+        finalPrice: price
+      });
+    }
+    
+    // Build the product object, ensuring price, rating, and reviews are properly set
+    // IMPORTANT: Remove price from productData before spreading to avoid conflicts
+    const { price: _priceFromData, stock: _stockFromData, ...productDataClean } = productData;
+    
+    const product = {
       productId,
-      ...productData,
+      ...productDataClean,
+      // Explicitly set these fields - price from pricing worker, rating/reviews from productData
+      price: price !== null && price !== undefined ? price : null, // ONLY use price from pricing worker, never from productData
+      rating: rating, // Ensure rating is a number (can be 0)
+      reviews: reviews, // Ensure reviews is a number (can be 0)
       stock: stock || 0, // Override stock from productData with actual stock from fulfillment
       stockDetails: stockInfo || null,
       createdAt,
       updatedAt,
       deletedAt,
     };
+    
+    return product;
   });
   
   return new Response(
@@ -190,6 +313,12 @@ export async function createProduct(request, env, ctx = null) {
     throw new ValidationError('Name, description, and category are required');
   }
   
+  // Validate discount percentage (0-90%)
+  const discountPercentage = body.discountPercentage || 0;
+  if (discountPercentage < 0 || discountPercentage > 90) {
+    throw new ValidationError('Discount percentage must be between 0% and 90%');
+  }
+  
   // Generate product ID
   const productId = randomUUID();
   
@@ -213,7 +342,7 @@ export async function createProduct(request, env, ctx = null) {
     productImage: body.images && body.images.length > 0 ? body.images[0] : (body.thumbnail || null),
     rating: body.rating || 0,
     reviews: body.reviews || 0,
-    discountPercentage: body.discountPercentage || 0,
+    discountPercentage: discountPercentage,
     tags: Array.isArray(body.tags) ? body.tags : [],
     stock: body.stock || 0,
     availabilityStatus: (body.stock || 0) > 0 ? 'in stock' : 'out of stock',
@@ -283,6 +412,14 @@ export async function updateProduct(request, env, ctx = null) {
   
   const { productId } = request.params;
   const body = await request.json();
+  
+  // Validate discount percentage if provided (0-90%)
+  if (body.discountPercentage !== undefined) {
+    const discountPercentage = body.discountPercentage || 0;
+    if (discountPercentage < 0 || discountPercentage > 90) {
+      throw new ValidationError('Discount percentage must be between 0% and 90%');
+    }
+  }
   
   // Log product update start
   await sendLog(logWorkerBindingOrUrl, 'event', 'Product update started (admin)', {

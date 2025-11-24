@@ -521,14 +521,33 @@
 							</div>
 						{/if}
 						<div class="p-4">
+							{#if product.discountPercentage > 0}
+								<div class="mb-2">
+									<span class="inline-block bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
+										{product.discountPercentage}% OFF
+									</span>
+								</div>
+							{/if}
 							<h3 class="font-semibold text-lg mb-2">{product.name || 'Product'}</h3>
 							<p class="text-gray-600 text-sm mb-2 line-clamp-2">
 								{product.description || 'No description available'}
 							</p>
 							<div class="flex items-center justify-between mb-3">
-								<span class="text-2xl font-bold text-blue-600">
-									₹{product.price?.toFixed(2) || 'N/A'}
-								</span>
+								<div class="flex flex-col">
+									{#if product.discountPercentage > 0 && product.price}
+										{@const discountedPrice = product.price * (1 - product.discountPercentage / 100)}
+										<span class="text-2xl font-bold text-blue-600">
+											₹{discountedPrice.toFixed(2)}
+										</span>
+										<span class="text-sm text-gray-400 line-through">
+											₹{product.price.toFixed(2)}
+										</span>
+									{:else}
+										<span class="text-2xl font-bold text-blue-600">
+											₹{product.price?.toFixed(2) || 'N/A'}
+										</span>
+									{/if}
+								</div>
 								<span class="text-sm text-gray-500">
 									Stock: {product.stock || 0}
 								</span>

@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/490</span>
+                <span class='fraction'>0/494</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/490</span>
+                <span class='fraction'>0/494</span>
             </div>
         
             
@@ -554,7 +554,15 @@
 <a name='L489'></a><a href='#L489'>489</a>
 <a name='L490'></a><a href='#L490'>490</a>
 <a name='L491'></a><a href='#L491'>491</a>
-<a name='L492'></a><a href='#L492'>492</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L492'></a><a href='#L492'>492</a>
+<a name='L493'></a><a href='#L493'>493</a>
+<a name='L494'></a><a href='#L494'>494</a>
+<a name='L495'></a><a href='#L495'>495</a>
+<a name='L496'></a><a href='#L496'>496</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -1270,26 +1278,30 @@
 <span class="cstat-no" title="statement not covered" >  const logWorkerBindingOrUrl = env.log_worker || env.LOG_WORKER_URL;</span>
 <span class="cstat-no" title="statement not covered" >  const apiKey = env.INTER_WORKER_API_KEY;</span>
 <span class="cstat-no" title="statement not covered" >  </span>
+<span class="cstat-no" title="statement not covered" >  let body = null;</span>
+<span class="cstat-no" title="statement not covered" >  let validatedValue = null;</span>
+<span class="cstat-no" title="statement not covered" >  </span>
 <span class="cstat-no" title="statement not covered" >  try {</span>
-<span class="cstat-no" title="statement not covered" >    const body = await request.json();</span>
+<span class="cstat-no" title="statement not covered" >    body = await request.json();</span>
 <span class="cstat-no" title="statement not covered" >    </span>
 <span class="cstat-no" title="statement not covered" >    // Validate</span>
 <span class="cstat-no" title="statement not covered" >    const { error, value } = addItemSchema.validate(body);</span>
 <span class="cstat-no" title="statement not covered" >    if (error) {</span>
 <span class="cstat-no" title="statement not covered" >      throw new ValidationError(error.details[0].message, error.details);</span>
 <span class="cstat-no" title="statement not covered" >    }</span>
+<span class="cstat-no" title="statement not covered" >    validatedValue = value;</span>
 <span class="cstat-no" title="statement not covered" >    </span>
 <span class="cstat-no" title="statement not covered" >    // Log item addition start</span>
 <span class="cstat-no" title="statement not covered" >    await sendLog(logWorkerBindingOrUrl, 'debug', 'Adding item to cart', {</span>
 <span class="cstat-no" title="statement not covered" >      userId: request.user.userId,</span>
-<span class="cstat-no" title="statement not covered" >      productId: value.productId,</span>
-<span class="cstat-no" title="statement not covered" >      quantity: value.quantity,</span>
+<span class="cstat-no" title="statement not covered" >      productId: validatedValue.productId,</span>
+<span class="cstat-no" title="statement not covered" >      quantity: validatedValue.quantity,</span>
 <span class="cstat-no" title="statement not covered" >      worker: 'cart-worker',</span>
 <span class="cstat-no" title="statement not covered" >    }, apiKey, ctx);</span>
 <span class="cstat-no" title="statement not covered" >    </span>
 <span class="cstat-no" title="statement not covered" >    const cart = await cartService.addItemToCart(</span>
 <span class="cstat-no" title="statement not covered" >      request.user.userId,</span>
-<span class="cstat-no" title="statement not covered" >      value,</span>
+<span class="cstat-no" title="statement not covered" >      validatedValue,</span>
 <span class="cstat-no" title="statement not covered" >      env.cart_db,</span>
 <span class="cstat-no" title="statement not covered" >      env.catalog_worker, // Service binding for product details</span>
 <span class="cstat-no" title="statement not covered" >      env.pricing_worker, // Service binding</span>
@@ -1300,8 +1312,8 @@
 <span class="cstat-no" title="statement not covered" >    // Log successful item addition</span>
 <span class="cstat-no" title="statement not covered" >    await sendLog(logWorkerBindingOrUrl, 'event', 'Item added to cart', {</span>
 <span class="cstat-no" title="statement not covered" >      userId: request.user.userId,</span>
-<span class="cstat-no" title="statement not covered" >      productId: value.productId,</span>
-<span class="cstat-no" title="statement not covered" >      quantity: value.quantity,</span>
+<span class="cstat-no" title="statement not covered" >      productId: validatedValue.productId,</span>
+<span class="cstat-no" title="statement not covered" >      quantity: validatedValue.quantity,</span>
 <span class="cstat-no" title="statement not covered" >      cartId: cart.cartId,</span>
 <span class="cstat-no" title="statement not covered" >      totalItems: cart.items?.length || 0,</span>
 <span class="cstat-no" title="statement not covered" >      worker: 'cart-worker',</span>
@@ -1319,8 +1331,8 @@
 <span class="cstat-no" title="statement not covered" >    // Log item addition failure</span>
 <span class="cstat-no" title="statement not covered" >    await sendLog(logWorkerBindingOrUrl, 'error', 'Failed to add item to cart', {</span>
 <span class="cstat-no" title="statement not covered" >      userId: request.user.userId,</span>
-<span class="cstat-no" title="statement not covered" >      productId: body.productId || null,</span>
-<span class="cstat-no" title="statement not covered" >      quantity: body.quantity || null,</span>
+<span class="cstat-no" title="statement not covered" >      productId: (validatedValue?.productId || body?.productId) || null,</span>
+<span class="cstat-no" title="statement not covered" >      quantity: (validatedValue?.quantity || body?.quantity) || null,</span>
 <span class="cstat-no" title="statement not covered" >      error: error.message,</span>
 <span class="cstat-no" title="statement not covered" >      worker: 'cart-worker',</span>
 <span class="cstat-no" title="statement not covered" >    }, apiKey, ctx);</span>
@@ -1543,7 +1555,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T03:54:07.579Z
+                at 2025-11-24T02:47:23.851Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

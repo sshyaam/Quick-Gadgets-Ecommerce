@@ -98,6 +98,19 @@
 			pagination.page = currentPage;
 			const data = await adminApi.getAllProducts(pagination.page, pagination.limit);
 			products = data.products || [];
+			
+			// Debug: Log first product to see what data we're getting
+			if (products.length > 0) {
+				console.log('[Admin] First product data:', {
+					productId: products[0].productId,
+					name: products[0].name,
+					price: products[0].price,
+					rating: products[0].rating,
+					reviews: products[0].reviews,
+					allKeys: Object.keys(products[0])
+				});
+			}
+			
 			pagination = {
 				...data.pagination,
 				hasNext: data.pagination?.page < data.pagination?.totalPages,
@@ -168,7 +181,7 @@
 			category: product.category || '',
 			brand: product.brand || '',
 			sku: product.sku || '',
-			price: 0, // Price comes from pricing worker
+			price: product.price || 0, // Price from pricing worker (now included in getAllProducts response)
 			stock: product.stock || 0,
 			rating: product.rating || 0,
 			reviews: product.reviews || 0,
@@ -317,6 +330,12 @@
 			return;
 		}
 		
+		// Validate discount percentage (0-90%)
+		if (productForm.discountPercentage < 0 || productForm.discountPercentage > 90) {
+			error = 'Discount percentage must be between 0% and 90%';
+			return;
+		}
+		
 		loading = true;
 		error = null;
 		message = null;
@@ -351,6 +370,24 @@
 			if (editingProduct) {
 				await adminApi.updateProduct(editingProduct, productData);
 				message = 'Product updated successfully!';
+				
+				// Update price in pricing worker if price changed
+				if (productForm.price > 0) {
+					try {
+						await apiRequest(`https://pricing-worker.shyaamdps.workers.dev/product/${editingProduct}`, {
+							method: 'PUT',
+							headers: {
+								'X-API-Key': 'ECOMSECRET',
+								'X-Worker-Request': 'true',
+								'Content-Type': 'application/json'
+							},
+							body: JSON.stringify({ price: productForm.price, currency: 'INR' })
+						});
+					} catch (err) {
+						console.error('Failed to update price:', err);
+						error = error || 'Product updated but price update failed. Please update price manually.';
+					}
+				}
 			} else {
 				const result = await adminApi.createProduct(productData);
 				message = 'Product created successfully!';
@@ -639,11 +676,11 @@
 						/>
 					</div>
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Discount %</label>
+						<label class="block text-sm font-medium text-gray-700 mb-1">Discount % (0-90%)</label>
 						<input
 							type="number"
 							min="0"
-							max="100"
+							max="90"
 							bind:value={productForm.discountPercentage}
 							class="w-full px-4 py-2 border rounded-lg"
 						/>
@@ -789,6 +826,9 @@
 						<tr>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Product</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rating</th>
+							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reviews</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Stock</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
 							<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -809,6 +849,27 @@
 									</div>
 								</td>
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.category}</td>
+								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+									{#if product.price !== null && product.price !== undefined && typeof product.price === 'number'}
+										₹{product.price.toFixed(2)}
+									{:else}
+										<span class="text-gray-400" title="Price not set in pricing database">N/A</span>
+									{/if}
+								</td>
+								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+									{#if typeof product.rating === 'number'}
+										{product.rating.toFixed(1)}/5
+									{:else}
+										<span class="text-gray-400">0.0</span>/5
+									{/if}
+								</td>
+								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+									{#if typeof product.reviews === 'number'}
+										{product.reviews}
+									{:else}
+										<span class="text-gray-400">0</span>
+									{/if}
+								</td>
 								<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{product.stock || 0}</td>
 								<td class="px-6 py-4 whitespace-nowrap">
 									{#if product.deletedAt}

@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/161</span>
+                <span class='fraction'>0/180</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/161</span>
+                <span class='fraction'>0/180</span>
             </div>
         
             
@@ -225,7 +225,45 @@
 <a name='L160'></a><a href='#L160'>160</a>
 <a name='L161'></a><a href='#L161'>161</a>
 <a name='L162'></a><a href='#L162'>162</a>
-<a name='L163'></a><a href='#L163'>163</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<a name='L163'></a><a href='#L163'>163</a>
+<a name='L164'></a><a href='#L164'>164</a>
+<a name='L165'></a><a href='#L165'>165</a>
+<a name='L166'></a><a href='#L166'>166</a>
+<a name='L167'></a><a href='#L167'>167</a>
+<a name='L168'></a><a href='#L168'>168</a>
+<a name='L169'></a><a href='#L169'>169</a>
+<a name='L170'></a><a href='#L170'>170</a>
+<a name='L171'></a><a href='#L171'>171</a>
+<a name='L172'></a><a href='#L172'>172</a>
+<a name='L173'></a><a href='#L173'>173</a>
+<a name='L174'></a><a href='#L174'>174</a>
+<a name='L175'></a><a href='#L175'>175</a>
+<a name='L176'></a><a href='#L176'>176</a>
+<a name='L177'></a><a href='#L177'>177</a>
+<a name='L178'></a><a href='#L178'>178</a>
+<a name='L179'></a><a href='#L179'>179</a>
+<a name='L180'></a><a href='#L180'>180</a>
+<a name='L181'></a><a href='#L181'>181</a>
+<a name='L182'></a><a href='#L182'>182</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -403,12 +441,24 @@
 <span class="cstat-no" title="statement not covered" > * @returns {Object} OpenTelemetry configuration</span>
 <span class="cstat-no" title="statement not covered" > */</span>
 <span class="cstat-no" title="statement not covered" >export function createOtelConfig(env, serviceName) {</span>
+<span class="cstat-no" title="statement not covered" >  // Use unified dataset for all workers to see traces together</span>
+<span class="cstat-no" title="statement not covered" >  // Force ecommerce-platform unless explicitly overridden</span>
+<span class="cstat-no" title="statement not covered" >  // This ensures all workers use the same dataset for distributed tracing</span>
+<span class="cstat-no" title="statement not covered" >  const unifiedDataset = env.HONEYCOMB_DATASET || 'ecommerce-platform';</span>
+<span class="cstat-no" title="statement not covered" >  </span>
+<span class="cstat-no" title="statement not covered" >  // Log configuration for debugging (only if API key is set to avoid exposing secrets)</span>
+<span class="cstat-no" title="statement not covered" >  if (env.HONEYCOMB_API_KEY) {</span>
+<span class="cstat-no" title="statement not covered" >    console.log(`[tracing] OpenTelemetry configured for service: ${serviceName}, dataset: ${unifiedDataset}, env.HONEYCOMB_DATASET: ${env.HONEYCOMB_DATASET || 'undefined'}`);</span>
+<span class="cstat-no" title="statement not covered" >  } else {</span>
+<span class="cstat-no" title="statement not covered" >    console.warn(`[tracing] HONEYCOMB_API_KEY not set for ${serviceName}. Traces will not be sent to Honeycomb.`);</span>
+<span class="cstat-no" title="statement not covered" >  }</span>
+<span class="cstat-no" title="statement not covered" >  </span>
 <span class="cstat-no" title="statement not covered" >  const config = {</span>
 <span class="cstat-no" title="statement not covered" >    exporter: {</span>
 <span class="cstat-no" title="statement not covered" >      url: env.HONEYCOMB_ENDPOINT || 'https://api.honeycomb.io/v1/traces',</span>
 <span class="cstat-no" title="statement not covered" >      headers: {</span>
 <span class="cstat-no" title="statement not covered" >        'x-honeycomb-team': env.HONEYCOMB_API_KEY || '',</span>
-<span class="cstat-no" title="statement not covered" >        'x-honeycomb-dataset': env.HONEYCOMB_DATASET || serviceName || 'cloudflare-worker',</span>
+<span class="cstat-no" title="statement not covered" >        'x-honeycomb-dataset': unifiedDataset,</span>
 <span class="cstat-no" title="statement not covered" >      },</span>
 <span class="cstat-no" title="statement not covered" >    },</span>
 <span class="cstat-no" title="statement not covered" >    service: {</span>
@@ -460,6 +510,13 @@
 <span class="cstat-no" title="statement not covered" >  </span>
 <span class="cstat-no" title="statement not covered" >  if (span) {</span>
 <span class="cstat-no" title="statement not covered" >    const traceContext = span.spanContext();</span>
+<span class="cstat-no" title="statement not covered" >    </span>
+<span class="cstat-no" title="statement not covered" >    // Add service name as attribute (important for filtering in Honeycomb)</span>
+<span class="cstat-no" title="statement not covered" >    if (serviceName) {</span>
+<span class="cstat-no" title="statement not covered" >      span.setAttribute('service.name', serviceName);</span>
+<span class="cstat-no" title="statement not covered" >      span.setAttribute('service_name', serviceName); // Also add as snake_case for easier querying</span>
+<span class="cstat-no" title="statement not covered" >      span.setAttribute('worker.name', serviceName); // Worker-specific attribute</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
 <span class="cstat-no" title="statement not covered" >    </span>
 <span class="cstat-no" title="statement not covered" >    // Add CF Ray ID to the active span (required)</span>
 <span class="cstat-no" title="statement not covered" >    if (cfRayId) {</span>
@@ -556,7 +613,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T03:54:07.579Z
+                at 2025-11-24T02:47:23.851Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

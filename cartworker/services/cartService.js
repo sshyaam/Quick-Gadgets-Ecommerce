@@ -196,7 +196,14 @@ export async function addItemToCart(
                            (productData.images && Array.isArray(productData.images) && productData.images.length > 0 ? productData.images[0] : null) ||
                            null;
       
-      // Add item with product details, price (not locked - will validate at checkout)
+      // Apply discount if discountPercentage is set (0-90%)
+      const discountPercentage = productData.discountPercentage || 0;
+      let finalPrice = priceData.price;
+      if (discountPercentage > 0 && discountPercentage <= 90) {
+        finalPrice = priceData.price * (1 - discountPercentage / 100);
+      }
+      
+      // Add item with product details, price (with discount applied, not locked - will validate at checkout)
       // DO NOT reserve stock here - reserve only during payment/checkout
       const newItem = {
         itemId: crypto.randomUUID(),
@@ -204,7 +211,7 @@ export async function addItemToCart(
         productName: productData.name || 'Product',
         productImage: productImage,
         quantity,
-        price: priceData.price, // Store current price, validate at checkout
+        price: finalPrice, // Store price with discount applied, validate at checkout
         currency: priceData.currency || 'INR',
         addedAt: new Date().toISOString(),
       };
