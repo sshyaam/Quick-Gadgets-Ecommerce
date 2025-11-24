@@ -56,7 +56,9 @@ jobs:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
           WORKERS=$(node scripts/detect-changed-workers.js)
-          echo "workers=$WORKERS" >> $GITHUB_OUTPUT
+          echo "workers<<EOF" >> $GITHUB_OUTPUT
+          echo "$WORKERS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           echo "Changed workers: $WORKERS"
 
   deploy-preview:
