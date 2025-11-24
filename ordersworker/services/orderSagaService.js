@@ -4,6 +4,8 @@
  * Coordinates multiple workers: cart, fulfillment, payment, rating
  */
 
+// This is a test to see if the runners are deploying order worker
+
 import { callWorker, callWorkerBinding } from '../../shared/utils/interWorker.js';
 import { executeTransaction } from '../../shared/utils/database.js';
 import { createOrder, updateOrderStatus } from '../models/orderModel.js';
