@@ -53,9 +53,18 @@ jobs:
 
       - name: Detect changed workers
         id: detect
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_EVENT_AFTER: ${{ github.event.after }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
+          echo "GitHub event before: $GITHUB_EVENT_BEFORE"
+          echo "GitHub event after: $GITHUB_EVENT_AFTER"
+          echo "GitHub SHA: $GITHUB_SHA"
           WORKERS=$(node scripts/detect-changed-workers.js)
-          echo "workers=$WORKERS" >> $GITHUB_OUTPUT
+          echo "workers<<EOF" >> $GITHUB_OUTPUT
+          echo "$WORKERS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
           echo "Changed workers: $WORKERS"
 
   deploy-production:

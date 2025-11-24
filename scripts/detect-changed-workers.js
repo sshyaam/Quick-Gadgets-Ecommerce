@@ -42,21 +42,71 @@ function getBaseBranch() {
 
 /**
  * Get changed files between current branch and base branch
+ * For production pushes, uses GitHub event data (before/after commits)
  */
 function getChangedFiles(baseBranch = 'main') {
   try {
-    // Try to get diff from base branch
-    const command = `git diff --name-only origin/${baseBranch}...HEAD 2>/dev/null || git diff --name-only ${baseBranch}...HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo ''`;
-    const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
-    return output.trim().split('\n').filter(Boolean);
-  } catch (error) {
-    // Fallback: check staged files
+    // For production pushes, GitHub provides before and after commit SHAs
+    const beforeSha = process.env.GITHUB_EVENT_BEFORE;
+    const afterSha = process.env.GITHUB_EVENT_AFTER || process.env.GITHUB_SHA;
+    
+    // If we have before/after SHAs (production push), use them directly
+    if (beforeSha && afterSha && beforeSha !== '0000000000000000000000000000000000000000') {
+      try {
+        const command = `git diff --name-only ${beforeSha} ${afterSha} 2>/dev/null || echo ''`;
+        const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+        const files = output.trim().split('\n').filter(Boolean);
+        if (files.length > 0) {
+          console.log(`[detect-changed-workers] Using GitHub event SHAs: ${beforeSha}..${afterSha}`);
+          return files;
+        }
+      } catch (error) {
+        console.warn(`[detect-changed-workers] Failed to use GitHub event SHAs: ${error.message}`);
+      }
+    }
+    
+    // For PRs or if event SHAs don't work, try comparing against base branch
+    try {
+      const command = `git diff --name-only origin/${baseBranch}...HEAD 2>/dev/null || git diff --name-only ${baseBranch}...HEAD 2>/dev/null || echo ''`;
+      const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+      const files = output.trim().split('\n').filter(Boolean);
+      if (files.length > 0) {
+        console.log(`[detect-changed-workers] Using branch comparison: origin/${baseBranch}...HEAD`);
+        return files;
+      }
+    } catch (error) {
+      console.warn(`[detect-changed-workers] Branch comparison failed: ${error.message}`);
+    }
+    
+    // Fallback: compare against previous commit (for production pushes)
+    try {
+      const command = `git diff --name-only HEAD~1 HEAD 2>/dev/null || echo ''`;
+      const output = execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
+      const files = output.trim().split('\n').filter(Boolean);
+      if (files.length > 0) {
+        console.log(`[detect-changed-workers] Using previous commit comparison: HEAD~1..HEAD`);
+        return files;
+      }
+    } catch (error) {
+      console.warn(`[detect-changed-workers] Previous commit comparison failed: ${error.message}`);
+    }
+    
+    // Last fallback: check staged files
     try {
       const output = execSync('git diff --cached --name-only', { encoding: 'utf-8', stdio: 'pipe' });
-      return output.trim().split('\n').filter(Boolean);
+      const files = output.trim().split('\n').filter(Boolean);
+      if (files.length > 0) {
+        console.log(`[detect-changed-workers] Using staged files`);
+        return files;
+      }
     } catch (e) {
-      return [];
+      console.warn(`[detect-changed-workers] Staged files check failed: ${e.message}`);
     }
+    
+    return [];
+  } catch (error) {
+    console.error(`[detect-changed-workers] Error getting changed files: ${error.message}`);
+    return [];
   }
 }
 
