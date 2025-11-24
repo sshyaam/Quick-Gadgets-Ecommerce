@@ -79,36 +79,60 @@ jobs:
           # Run script - only capture stdout (JSON), stderr goes to logs
           # Script outputs JSON to stdout and logs to stderr
           set +e  # Don't exit on error
-          WORKERS=$(node scripts/detect-changed-workers.js 2>/dev/null)
+          WORKERS_RAW=$(node scripts/detect-changed-workers.js 2>/dev/null)
           EXIT_CODE=$?
           set -e  # Re-enable exit on error
           
           # If script failed or output is empty, use empty array
-          if [ $EXIT_CODE -ne 0 ] || [ -z "$WORKERS" ]; then
+          if [ $EXIT_CODE -ne 0 ] || [ -z "$WORKERS_RAW" ]; then
+            echo "Script failed or returned empty, using empty array"
             WORKERS='[]'
+          else
+            # Extract only the JSON array line (should be the last line that matches pattern)
+            # Use grep to find lines that are JSON arrays, take the last one
+            WORKERS=$(echo "$WORKERS_RAW" | grep -E '^\[.*\]$' | tail -1)
+            
+            # If no valid JSON found, use empty array
+            if [ -z "$WORKERS" ] || ! echo "$WORKERS" | grep -qE '^\[.*\]$'; then
+              echo "Warning: Could not extract valid JSON array, using empty array"
+              echo "Raw output was: $WORKERS_RAW"
+              WORKERS='[]'
+            else
+            # Remove any trailing whitespace/newlines
+            WORKERS=$(printf '%s' "$WORKERS" | tr -d '\n\r')
+            fi
           fi
           
-          # Validate it's a valid JSON array (starts with [ and ends with ])
-          if ! echo "$WORKERS" | grep -qE '^\[.*\]$'; then
-            echo "Warning: Output is not a valid JSON array, using empty array"
-            WORKERS='[]'
-          fi
-          
-          # Trim any whitespace and newlines
-          WORKERS=$(echo "$WORKERS" | tr -d '\n\r' | xargs)
-          
-          # Final validation: ensure it's not empty after trimming
+          # Final validation: ensure it's not empty
           if [ -z "$WORKERS" ]; then
             WORKERS='[]'
           fi
           
-          # Use multiline format for GitHub Actions output (more reliable)
+          # Validate JSON syntax using Python (if available)
+          if command -v python3 &> /dev/null; then
+            if ! echo "$WORKERS" | python3 -m json.tool >/dev/null 2>&1; then
+              echo "Warning: Invalid JSON syntax, using empty array"
+              WORKERS='[]'
+            fi
+          fi
+          
+          # Output to GitHub Actions - use multiline format for reliability
+          # Ensure JSON is on a single line with no trailing newline
+          WORKERS_CLEAN=$(printf '%s' "$WORKERS")
+          
+          # Debug: Show what we're outputting
+          echo "DEBUG: Workers JSON length: ${#WORKERS_CLEAN}"
+          echo "DEBUG: Workers JSON preview: ${WORKERS_CLEAN:0:50}..."
+          
+          # Output using multiline format (EOF delimiter)
           {
             echo "workers<<EOF"
-            echo "$WORKERS"
+            printf '%s' "$WORKERS_CLEAN"
+            echo ""
             echo "EOF"
           } >> $GITHUB_OUTPUT
-          echo "Changed workers: $WORKERS"
+          
+          echo "Changed workers: $WORKERS_CLEAN"
 
   deploy-production:
     name: Deploy to Production
