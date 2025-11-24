@@ -205,6 +205,7 @@ export async function addItemToCart(
       
       // Add item with product details, price (with discount applied, not locked - will validate at checkout)
       // DO NOT reserve stock here - reserve only during payment/checkout
+      // Store all product data for future use, but keep existing fields for backward compatibility with frontend
       const newItem = {
         itemId: crypto.randomUUID(),
         productId,
@@ -214,6 +215,8 @@ export async function addItemToCart(
         price: finalPrice, // Store price with discount applied, validate at checkout
         currency: priceData.currency || 'INR',
         addedAt: new Date().toISOString(),
+        // Store full product data (all attributes from catalog worker)
+        productData: productData,
       };
       console.log(`[cart-service] Adding item to cart:`, JSON.stringify(newItem));
       items.push(newItem);
