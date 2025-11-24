@@ -55,15 +55,26 @@ jobs:
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: |
-          # Capture only stdout (JSON), stderr goes to logs automatically
-          WORKERS=$(node scripts/detect-changed-workers.js 2>/dev/null || echo '[]')
-          # Trim whitespace and ensure we have valid JSON
-          WORKERS=$(echo "$WORKERS" | xargs)
-          if [ -z "$WORKERS" ] || ! echo "$WORKERS" | grep -qE '^\['; then
+          # Run script and capture output
+          SCRIPT_OUTPUT=$(node scripts/detect-changed-workers.js 2>&1 || echo '[]')
+          # Extract only the JSON array line (should be the last line that starts with [)
+          WORKERS=$(echo "$SCRIPT_OUTPUT" | grep -E '^\[' | tail -1)
+          # If no valid JSON found, use empty array
+          if [ -z "$WORKERS" ] || ! echo "$WORKERS" | grep -qE '^\[.*\]$'; then
             WORKERS='[]'
           fi
-          # Set output (ensure no extra whitespace)
-          echo "workers=$WORKERS" >> $GITHUB_OUTPUT
+          # Trim any whitespace
+          WORKERS=$(echo "$WORKERS" | tr -d '\n\r' | xargs)
+          # Validate it's not empty after trimming
+          if [ -z "$WORKERS" ]; then
+            WORKERS='[]'
+          fi
+          # Use multiline format for GitHub Actions output (more reliable)
+          {
+            echo "workers<<EOF"
+            echo "$WORKERS"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
           echo "Changed workers: $WORKERS"
 
   deploy-preview:
