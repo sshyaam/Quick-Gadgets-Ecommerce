@@ -151,6 +151,17 @@ export async function createPayPalOrder(orderData, paypalClientId, paypalClientS
   
   const orderResult = await orderResponse.json();
   console.log('[payment-service] PayPal order created successfully:', orderResult.id);
+  
+  // Log all PayPal URLs (links array)
+  if (orderResult.links && Array.isArray(orderResult.links)) {
+    console.log('[payment-service] PayPal URLs (links):');
+    orderResult.links.forEach((link, index) => {
+      console.log(`  [${index + 1}] ${link.rel}: ${link.href} (method: ${link.method || 'N/A'})`);
+    });
+  } else {
+    console.log('[payment-service] No links found in PayPal response');
+  }
+  
   return orderResult;
 }
 
