@@ -7,7 +7,10 @@
     "**/scripts/**",
     "**/database-schemas/**",
     "**/docs/**",
-    "**/frontend/**"
+    "**/frontend/**",
+    "**/coverage/**",
+    "**/realtimeworker/**",
+    "**/shared/utils/tracing.js"
   ],
   "include": [
     "**/*.js"
